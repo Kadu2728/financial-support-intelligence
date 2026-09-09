@@ -1,0 +1,38 @@
+# Python
+*.egg-info/
+.eggs/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+.vercel
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Uploads locais (dev)
+storage/
+uploads/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

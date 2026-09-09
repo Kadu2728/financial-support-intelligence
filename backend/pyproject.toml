@@ -1,0 +1,87 @@
+[project]
+name = "financial-support-intelligence"
+version = "0.1.0"
+description = "Plataforma de inteligencia operacional para equipes de suporte financeiro"
+requires-python = ">=3.12"
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "structlog>=24.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+# ----------------------------------------------------------------------------
+# Ruff — lint + format. Substitui flake8, isort, black e pyupgrade.
+# ----------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "N",        # pep8-naming
+    "UP",       # pyupgrade
+    "B",        # flake8-bugbear
+    "C4",       # comprehensions
+    "SIM",      # simplify
+    "TID",      # tidy-imports
+    "RUF",      # ruff-specific
+    "ASYNC",    # async antipatterns
+    "S",        # bandit — regras de seguranca
+]
+ignore = [
+    "S101",  # assert: legitimo em testes
+    "B008",  # chamada em default: e o padrao de Depends() do FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]  # credenciais hardcoded sao esperadas em fixtures
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Fronteiras entre modulos sao mantidas por convencao e revisao (ver ADR-0001).
+ban-relative-imports = "all"
+
+# ----------------------------------------------------------------------------
+# Mypy — strict desde o inicio. Afrouxar depois e facil; apertar e refactor.
+# ----------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+# ----------------------------------------------------------------------------
+# Pytest
+# ----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+markers = [
+    "integration: exige banco de dados real",
+]

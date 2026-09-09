@@ -4,7 +4,7 @@ Plataforma interna de inteligência operacional para equipes de suporte de insti
 Analistas perguntam em linguagem natural sobre políticas, procedimentos e manuais internos, e
 recebem respostas fundamentadas **com as fontes exatas** — documento, seção e trecho utilizado.
 
-> **Status:** em desenvolvimento. Fase 1 de 11 concluída (setup do monorepo).
+> **Status:** em desenvolvimento. Fase 2 de 11 concluída (banco de dados e migrations).
 > O plano de fases está em [`docs/architecture.md`](docs/architecture.md).
 
 ---
@@ -129,6 +129,25 @@ uvicorn app.main:app --reload
 
 API em `http://localhost:8000` · documentação interativa em `/docs`.
 
+#### Migrations
+
+```bash
+cd backend
+.venv/Scripts/python -m alembic upgrade head      # aplica o schema
+.venv/Scripts/python -m alembic downgrade base    # reverte tudo
+```
+
+Para revisar o SQL antes de executar — recomendado em produção:
+
+```bash
+cd backend && .venv/Scripts/python -m alembic upgrade head --sql
+```
+
+A migration inicial cria as extensões `vector`, `pg_trgm` e `citext`, os sete tipos ENUM e as
+dez tabelas. É escrita à mão em vez de gerada por `autogenerate` porque a ordem importa: extensões
+antes dos tipos de coluna que dependem delas, e tipos ENUM antes das tabelas que os usam — o
+`autogenerate` não modela extensões.
+
 ### Frontend
 
 ```bash
@@ -217,7 +236,7 @@ consequências (inclusive as negativas) e alternativas descartadas:
 
 - [x] **Fase 0** — Arquitetura e planejamento
 - [x] **Fase 1** — Setup do monorepo
-- [ ] **Fase 2** — Banco de dados e migrations
+- [x] **Fase 2** — Banco de dados e migrations
 - [ ] **Fase 3** — Autenticação e autorização
 - [ ] **Fase 4** — Sistema de documentos
 - [ ] **Fase 5** — Extração, chunking e embeddings

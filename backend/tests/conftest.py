@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from typing import Any
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.config import Environment, Settings
+from app.core.dependencies import get_session
 from app.main import create_app
 
 
@@ -23,13 +27,46 @@ def settings() -> Settings:
     )
 
 
-@pytest.fixture
-def app(settings: Settings) -> FastAPI:
-    return create_app(settings)
+class FakeSession:
+    """Sessao de banco falsa para os testes que nao precisam de banco real.
+
+    Cobre o comportamento observavel de que os endpoints dependem — `execute` funciona
+    ou levanta. Testes que exercitam SQL de verdade sao marcados `integration` e rodam
+    contra o Neon (Fase 2+, quando a credencial estiver disponivel).
+    """
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.executed: list[Any] = []
+
+    async def execute(self, statement: Any, *args: Any, **kwargs: Any) -> Any:
+        if self.fail:
+            raise ConnectionError("connection refused")
+        self.executed.append(statement)
+        return None
 
 
 @pytest.fixture
-def client(app: FastAPI) -> TestClient:
+def db_fails(request: pytest.FixtureRequest) -> bool:
+    """Simula queda do banco via `@pytest.mark.parametrize(..., indirect=True)`."""
+    return bool(getattr(request, "param", False))
+
+
+@pytest.fixture
+def app(settings: Settings, db_fails: bool) -> Iterator[FastAPI]:
+    application = create_app(settings)
+
+    async def _override_session() -> Any:
+        yield FakeSession(fail=db_fails)
+
+    application.dependency_overrides[get_session] = _override_session
+    yield application
+    application.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(app: FastAPI) -> Iterator[TestClient]:
     # raise_server_exceptions=False faz o TestClient exercitar o handler global de
     # excecoes em vez de propagar o erro — sem isso, o contrato de erro 500 nao e testavel.
-    return TestClient(app, raise_server_exceptions=False)
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        yield test_client

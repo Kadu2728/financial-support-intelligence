@@ -1,6 +1,8 @@
 # Modelo de dados
 
-> Esquema alvo, definido na Fase 0. Implementado via Alembic na Fase 2.
+> Implementado na Fase 2. Migration: `backend/alembic/versions/20260909_0001_initial_schema.py`.
+> Os modelos SQLAlchemy vivem em `app/modules/<modulo>/models.py` e sao agregados por
+> `app/db/registry.py`.
 > Decisões com trade-off: [ADR-0005](./adr/0005-versionamento-de-documentos.md) (versionamento) e
 > [ADR-0006](./adr/0006-role-como-enum.md) (papéis).
 
@@ -28,6 +30,7 @@ CREATE EXTENSION IF NOT EXISTS citext;    -- e-mail case-insensitive sem LOWER()
 CREATE TYPE user_role       AS ENUM ('ADMIN', 'ANALYST');
 CREATE TYPE doc_status      AS ENUM ('PENDING','PROCESSING','READY','FAILED','SUPERSEDED');
 CREATE TYPE job_status      AS ENUM ('PENDING','RUNNING','COMPLETED','FAILED');
+CREATE TYPE job_type        AS ENUM ('INGEST');
 CREATE TYPE query_status    AS ENUM ('SUCCESS','INSUFFICIENT_EVIDENCE','FAILED');
 CREATE TYPE feedback_rating AS ENUM ('POSITIVE','NEGATIVE');
 CREATE TYPE feedback_reason AS ENUM ('INCORRECT','INCOMPLETE','WRONG_SOURCE','OUTDATED','OTHER');
@@ -138,7 +141,7 @@ Dois pontos que quebram silenciosamente se ignorados:
 |---|---|---|
 | `id` | uuid | PK |
 | `document_version_id` | uuid | FK → `document_versions` ON DELETE CASCADE |
-| `job_type` | text | `'INGEST'` na v1 |
+| `job_type` | job_type | `'INGEST'` na v1 |
 | `status` | job_status | |
 | `attempts` / `max_attempts` | int | |
 | `last_error` | text | |

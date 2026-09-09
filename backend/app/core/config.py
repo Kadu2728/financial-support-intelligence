@@ -12,7 +12,7 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,6 +35,28 @@ class Settings(BaseSettings):
     app_name: str = "Financial Support Intelligence"
     app_env: Environment = Environment.LOCAL
     api_v1_prefix: str = "/api/v1"
+
+    # --- Banco de dados ----------------------------------------------------
+    # Neon: usar a connection string POOLED (host com `-pooler`). Ver app/db/session.py.
+    database_url: PostgresDsn = PostgresDsn(
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/fsi"
+    )
+    db_echo: bool = False
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _require_async_driver(cls, value: object) -> object:
+        """Converte `postgresql://` para `postgresql+asyncpg://`.
+
+        Neon, Railway e a maioria das plataformas entregam a URL no formato sincrono.
+        Sem o driver async explicito, o SQLAlchemy carrega psycopg2 e falha com um erro
+        que nao diz o que esta errado.
+        """
+        if isinstance(value, str) and value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return value
 
     # --- Observabilidade ---------------------------------------------------
     log_level: str = "INFO"

@@ -11,9 +11,16 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, PostgresDsn, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Opcoes de conexao do libpq que o asyncpg nao reconhece. O Neon inclui as duas
+# primeiras na connection string que exibe no painel.
+_OPCOES_LIBPQ = frozenset(
+    {"sslmode", "channel_binding", "sslrootcert", "sslcert", "sslkey", "target_session_attrs"}
+)
 
 
 class Environment(StrEnum):
@@ -47,16 +54,36 @@ class Settings(BaseSettings):
 
     @field_validator("database_url", mode="before")
     @classmethod
-    def _require_async_driver(cls, value: object) -> object:
-        """Converte `postgresql://` para `postgresql+asyncpg://`.
+    def _normalize_database_url(cls, value: object) -> object:
+        """Adapta a connection string entregue pelas plataformas ao driver asyncpg.
 
-        Neon, Railway e a maioria das plataformas entregam a URL no formato sincrono.
-        Sem o driver async explicito, o SQLAlchemy carrega psycopg2 e falha com um erro
-        que nao diz o que esta errado.
+        Duas correcoes, ambas para erros que custam tempo por nao dizerem o que esta
+        errado:
+
+        1. `postgresql://` -> `postgresql+asyncpg://`. Neon e Railway entregam a URL no
+           formato sincrono; sem o driver explicito o SQLAlchemy tenta carregar psycopg2.
+
+        2. Remove `sslmode`, `channel_binding` e afins. Sao opcoes do **libpq**, nao do
+           asyncpg, que as rejeita com `invalid dsn: invalid connection option
+           "sslmode"`. O Neon inclui as duas por padrao na string que exibe no painel.
+           TLS continua ativo — e configurado em `create_engine`, ver app/db/session.py.
         """
-        if isinstance(value, str) and value.startswith("postgresql://"):
-            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return value
+        if not isinstance(value, str):
+            return value
+
+        if value.startswith("postgresql://"):
+            value = value.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+        parsed = urlsplit(value)
+        if not parsed.query:
+            return value
+
+        preservados = [
+            (chave, valor)
+            for chave, valor in parse_qsl(parsed.query, keep_blank_values=True)
+            if chave.lower() not in _OPCOES_LIBPQ
+        ]
+        return urlunsplit(parsed._replace(query=urlencode(preservados)))
 
     # --- Autenticacao ------------------------------------------------------
     # Sem default seguro de proposito: em producao, um segredo padrao permitiria a

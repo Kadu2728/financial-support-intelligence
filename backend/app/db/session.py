@@ -23,6 +23,31 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import Settings
 
+_HOSTS_LOCAIS = frozenset({"localhost", "127.0.0.1", "::1", ""})
+
+
+def _connect_args(settings: Settings) -> dict[str, object]:
+    args: dict[str, object] = {
+        # asyncpg faz cache de prepared statements por conexao. Atras de um pooler em
+        # modo transaction, a conexao fisica muda entre requisicoes e o cache passa a
+        # apontar para statements que nao existem mais naquela sessao.
+        "statement_cache_size": 0,
+    }
+
+    # `sslmode` e removido da URL em Settings porque o asyncpg nao o entende (opcao do
+    # libpq). TLS precisa ser reativado aqui — caso contrario a conexao com o Neon
+    # sairia em texto claro, ou seria recusada pelo servidor.
+    #
+    # Localhost fica de fora: um Postgres de desenvolvimento normalmente nao tem
+    # certificado, e exigir TLS impediria a conexao.
+    # PostgresDsn e um MultiHostUrl (o Postgres aceita varios hosts na mesma string),
+    # entao nao expoe `.host` — a lista vem de `.hosts()`.
+    hosts = {(entrada.get("host") or "").lower() for entrada in settings.database_url.hosts()}
+    if hosts - _HOSTS_LOCAIS:
+        args["ssl"] = "require"
+
+    return args
+
 
 def create_engine(settings: Settings) -> AsyncEngine:
     return create_async_engine(
@@ -32,10 +57,7 @@ def create_engine(settings: Settings) -> AsyncEngine:
         max_overflow=settings.db_max_overflow,
         pool_pre_ping=True,
         pool_recycle=300,
-        # asyncpg faz cache de prepared statements por conexao. Atras de um pooler em
-        # modo transaction, a conexao fisica muda entre requisicoes e o cache passa a
-        # apontar para statements que nao existem mais naquela sessao.
-        connect_args={"statement_cache_size": 0},
+        connect_args=_connect_args(settings),
     )
 
 

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.core.config import get_settings
 from app.db.registry import Base
+from app.db.session import _connect_args
 
 config = context.config
 
@@ -79,7 +80,10 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args={"statement_cache_size": 0},
+        # Mesmos ajustes do engine da aplicacao: TLS reativado (o `sslmode` da URL e
+        # removido por ser opcao do libpq) e cache de prepared statements desligado
+        # por causa do pooler. Ver app/db/session.py.
+        connect_args=_connect_args(get_settings()),
     )
 
     async with connectable.connect() as connection:

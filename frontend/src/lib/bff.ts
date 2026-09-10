@@ -42,6 +42,11 @@ interface BackendRequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   /** Encaminha o request-id do browser para manter a correlacao ponta a ponta. */
   requestId?: string | null;
+  /**
+   * Access token, lido do cookie httpOnly pelo chamador em `lib/session.ts`.
+   * E aqui que a credencial sai do cookie e vira header — o navegador nunca a ve.
+   */
+  token?: string | null;
   timeoutMs?: number;
 }
 
@@ -49,7 +54,7 @@ export async function backendFetch<T>(
   path: string,
   options: BackendRequestOptions = {},
 ): Promise<T> {
-  const { body, requestId, timeoutMs = 30_000, headers, ...init } = options;
+  const { body, requestId, token, timeoutMs = 30_000, headers, ...init } = options;
 
   // Sem timeout explicito, um backend lento prende o runtime do Next ate o limite da
   // plataforma e o usuario fica olhando para um spinner sem fim.
@@ -64,6 +69,7 @@ export async function backendFetch<T>(
       headers: {
         "Content-Type": "application/json",
         ...(requestId ? { [REQUEST_ID_HEADER]: requestId } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
       body: body === undefined ? undefined : JSON.stringify(body),

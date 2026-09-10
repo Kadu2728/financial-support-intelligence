@@ -4,7 +4,7 @@ Plataforma interna de inteligência operacional para equipes de suporte de insti
 Analistas perguntam em linguagem natural sobre políticas, procedimentos e manuais internos, e
 recebem respostas fundamentadas **com as fontes exatas** — documento, seção e trecho utilizado.
 
-> **Status:** em desenvolvimento. Fase 2 de 11 concluída (banco de dados e migrations).
+> **Status:** em desenvolvimento. Fase 3 de 11 concluída (autenticação e autorização).
 > O plano de fases está em [`docs/architecture.md`](docs/architecture.md).
 
 ---
@@ -70,6 +70,19 @@ PERGUNTA → embedding
 códigos de produto) — casos em que embeddings falham e full-text acerta. E o inverso vale para
 paráfrases. As duas pernas são fundidas por Reciprocal Rank Fusion, tudo dentro do PostgreSQL
 ([ADR-0002](docs/adr/0002-busca-hibrida-rrf.md)).
+
+### Autenticação
+
+Access token JWT de 15 minutos, refresh **opaco** de 7 dias com rotação e detecção de reuso. O
+refresh não é JWT de propósito: validá-lo exige consultar o banco de qualquer forma — é o que
+permite revogar — e, sendo a consulta obrigatória, o JWT só adicionaria superfície.
+
+Se um refresh já revogado reaparece, é sinal de roubo e **todas** as sessões do usuário caem. Sem
+essa detecção, a rotação seria teatro: o atacante que copiou o token continuaria renovando ao lado
+do usuário legítimo.
+
+Os tokens vivem em cookies httpOnly first-party gravados pelo BFF e nunca chegam ao JavaScript do
+navegador ([ADR-0003](docs/adr/0003-bff-para-autenticacao.md)).
 
 **Controle de hallucination em cinco camadas**, três delas independentes do comportamento do modelo:
 gate de evidência antes da chamada, contrato de prompt, saída estruturada, validação determinística
@@ -147,6 +160,18 @@ A migration inicial cria as extensões `vector`, `pg_trgm` e `citext`, os sete t
 dez tabelas. É escrita à mão em vez de gerada por `autogenerate` porque a ordem importa: extensões
 antes dos tipos de coluna que dependem delas, e tipos ENUM antes das tabelas que os usam — o
 `autogenerate` não modela extensões.
+
+#### Primeiro usuário
+
+Não há auto-registro: cadastrar usuários exige um ADMIN autenticado, e o primeiro
+administrador precisa ser criado pela linha de comando.
+
+```bash
+cd backend && .venv/Scripts/python -m app.cli create-admin --email voce@instituicao.com.br --name "Seu Nome"
+```
+
+A senha é lida de forma interativa — nunca por argumento, que ficaria no histórico do shell e
+na lista de processos.
 
 ### Frontend
 
@@ -237,7 +262,7 @@ consequências (inclusive as negativas) e alternativas descartadas:
 - [x] **Fase 0** — Arquitetura e planejamento
 - [x] **Fase 1** — Setup do monorepo
 - [x] **Fase 2** — Banco de dados e migrations
-- [ ] **Fase 3** — Autenticação e autorização
+- [x] **Fase 3** — Autenticação e autorização
 - [ ] **Fase 4** — Sistema de documentos
 - [ ] **Fase 5** — Extração, chunking e embeddings
 - [ ] **Fase 6** — Busca semântica e híbrida

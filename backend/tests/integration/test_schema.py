@@ -127,7 +127,7 @@ async def test_apenas_uma_versao_corrente_por_documento(conn: AsyncConnection) -
             INSERT INTO users (id, email, password_hash, full_name, role, is_active)
             VALUES (:id, :email, 'x', 'Teste', 'ADMIN', true)
         """),
-        {"id": user_id, "email": f"{user_id}@teste.local"},
+        {"id": user_id, "email": f"{user_id}@bancoexemplo.com.br"},
     )
     await conn.execute(
         text("INSERT INTO documents (id, title, uploaded_by) VALUES (:id, 'Doc', :user)"),
@@ -181,7 +181,7 @@ async def test_email_e_case_insensitive(conn: AsyncConnection) -> None:
                 INSERT INTO users (id, email, password_hash, full_name, role, is_active)
                 VALUES (:id, :email, 'x', 'Outro', 'ANALYST', true)
             """),
-            {"id": uuid.uuid4(), "email": f"{base}@teste.local"},
+            {"id": uuid.uuid4(), "email": f"{base}@bancoexemplo.com.br"},
         )
 
 
@@ -194,7 +194,7 @@ async def test_enum_rejeita_valor_invalido(conn: AsyncConnection) -> None:
                 INSERT INTO users (id, email, password_hash, full_name, role, is_active)
                 VALUES (:id, :email, 'x', 'Teste', 'ADMIM', true)
             """),
-            {"id": uuid.uuid4(), "email": f"{uuid.uuid4()}@teste.local"},
+            {"id": uuid.uuid4(), "email": f"{uuid.uuid4()}@bancoexemplo.com.br"},
         )
 
 

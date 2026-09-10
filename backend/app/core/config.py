@@ -12,7 +12,7 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 
-from pydantic import Field, PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,6 +56,31 @@ class Settings(BaseSettings):
         """
         if isinstance(value, str) and value.startswith("postgresql://"):
             return value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return value
+
+    # --- Autenticacao ------------------------------------------------------
+    # Sem default seguro de proposito: em producao, um segredo padrao permitiria a
+    # qualquer um forjar tokens. O validador abaixo bloqueia o valor de dev fora de local.
+    jwt_secret_key: SecretStr = SecretStr("dev-secret-local-apenas-trocar-em-producao")
+    jwt_algorithm: str = "HS256"
+
+    # Access curto porque nao ha como revoga-lo antes de expirar — a janela de dano de
+    # um token vazado e exatamente esta.
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def _reject_dev_secret_in_production(cls, value: SecretStr, info: ValidationInfo) -> SecretStr:
+        env = info.data.get("app_env")
+        if env is Environment.PRODUCTION:
+            secret = value.get_secret_value()
+            # 32 bytes e o minimo da RFC 7518 para HS256.
+            if secret.startswith("dev-secret") or len(secret.encode()) < 32:
+                raise ValueError(
+                    "JWT_SECRET_KEY inseguro em producao. Gere com: "
+                    'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+                )
         return value
 
     # --- Observabilidade ---------------------------------------------------

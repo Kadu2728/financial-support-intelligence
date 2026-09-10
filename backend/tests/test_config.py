@@ -30,7 +30,8 @@ def test_cors_origins_aceita_lista() -> None:
 
 def test_docs_ficam_fechados_em_producao() -> None:
     """OpenAPI publico expoe a superficie inteira da API sem necessidade."""
-    settings = Settings(app_env=Environment.PRODUCTION)
+    # O segredo precisa ser valido: desde a Fase 3, producao recusa o default de dev.
+    settings = Settings(app_env=Environment.PRODUCTION, jwt_secret_key="k" * 48)
 
     assert settings.is_production is True
     assert settings.docs_url is None

@@ -193,6 +193,7 @@ def test_segredo_forte_e_aceito_em_producao() -> None:
     settings = Settings(
         app_env=Environment.PRODUCTION,
         jwt_secret_key="k" * 48,
+        gemini_api_key="chave",
     )
     assert settings.is_production
 

@@ -6,8 +6,9 @@ modulo registra seu proprio router e o `main` apenas os agrega.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import APIRouter, FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +21,9 @@ from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.db.session import create_engine, create_session_factory
 from app.modules.auth.router import router as auth_router
+from app.modules.documents.router import get_storage
 from app.modules.documents.router import router as documents_router
+from app.modules.ingestion.worker import IngestionWorker
 from app.modules.users.router import router as users_router
 
 logger = get_logger(__name__)
@@ -39,10 +42,42 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
 
+    # Cliente do Gemini compartilhado pelo worker e pelo copilot: um pool HTTP so.
+    # `None` quando a chave nao esta configurada — os endpoints que dependem dele
+    # respondem 503 com a causa, em vez de a aplicacao recusar-se a subir.
+    app.state.gemini = None
+    if settings.gemini_configured:
+        from app.integrations.gemini.client import GeminiClient
+
+        app.state.gemini = GeminiClient(settings)
+    else:
+        logger.warning("gemini_not_configured", hint="defina GEMINI_API_KEY no .env")
+
+    parar_worker = asyncio.Event()
+    tarefa_worker: asyncio.Task[None] | None = None
+    if settings.worker_enabled and app.state.gemini is not None:
+        worker = IngestionWorker(
+            settings=settings,
+            session_factory=app.state.session_factory,
+            storage=get_storage(settings),
+            embeddings=app.state.gemini,
+        )
+        tarefa_worker = asyncio.create_task(worker.run_forever(parar_worker), name="ingestion")
+    elif settings.worker_enabled:
+        logger.warning("worker_disabled", reason="gemini_not_configured")
+
     logger.info("application_startup", env=settings.app_env.value, version=app.version)
     try:
         yield
     finally:
+        if tarefa_worker is not None:
+            # Sinaliza e espera: um job no meio da gravacao termina a transacao em
+            # vez de ser cancelado com o banco em estado indefinido.
+            parar_worker.set()
+            with suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(tarefa_worker, timeout=30)
+        if app.state.gemini is not None:
+            await app.state.gemini.aclose()
         # Sem o dispose, as conexoes ficam abertas do lado do Neon ate expirarem —
         # e o plano gratuito tem um limite baixo de conexoes simultaneas.
         await engine.dispose()

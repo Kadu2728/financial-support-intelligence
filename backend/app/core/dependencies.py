@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.db.session import get_db
+from app.integrations.gemini.client import GeminiClient, GeminiNotConfiguredError
 
 
 def get_settings_dep(request: Request) -> Settings:
@@ -34,5 +35,18 @@ async def get_session(
         yield session
 
 
+def get_gemini(request: Request) -> GeminiClient:
+    """Cliente do Gemini criado no lifespan.
+
+    Levanta 503 com causa explicita quando a chave nao esta configurada — a
+    alternativa, um 500 generico no primeiro uso, esconderia o motivo.
+    """
+    client: GeminiClient | None = getattr(request.app.state, "gemini", None)
+    if client is None:
+        raise GeminiNotConfiguredError
+    return client
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings_dep)]
+GeminiDep = Annotated[GeminiClient, Depends(get_gemini)]
 SessionDep = Annotated[AsyncSession, Depends(get_session)]

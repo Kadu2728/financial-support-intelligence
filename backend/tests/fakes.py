@@ -161,3 +161,74 @@ class FakeStorage:
 
     async def exists(self, key: str) -> bool:
         return key in self.objetos
+
+
+class FakeEmbeddingClient:
+    """Embeddings deterministicos por hashing de palavras.
+
+    Cada palavra vai para uma posicao fixa do vetor (hash mod 768); o vetor final e
+    normalizado. Dois textos que compartilham palavras ficam proximos em cosine —
+    o suficiente para exercitar a busca, a fusao e o gate sem chamar o Gemini.
+    Nao mede qualidade semantica; isso so o modelo real mede.
+    """
+
+    embedding_model = "fake-embedding-768"
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.chamadas: list[tuple[int, str]] = []
+
+    async def embed(self, textos: list[str], *, task_type: object) -> list[list[float]]:
+        if self.fail:
+            from app.integrations.gemini.client import GeminiError
+
+            raise GeminiError("falha injetada")
+        self.chamadas.append((len(textos), str(task_type)))
+        return [embed_fake(t) for t in textos]
+
+
+def embed_fake(texto: str, dimensoes: int = 768) -> list[float]:
+    import hashlib
+    import math
+    import re
+
+    vetor = [0.0] * dimensoes
+    for palavra in re.findall(r"\w+", texto.lower()):
+        if len(palavra) < 3:
+            continue
+        indice = int(hashlib.md5(palavra.encode(), usedforsecurity=False).hexdigest(), 16)
+        vetor[indice % dimensoes] += 1.0
+    norma = math.sqrt(sum(x * x for x in vetor))
+    if norma == 0:
+        vetor[0] = 1.0
+        return vetor
+    return [x / norma for x in vetor]
+
+
+class FakeGenerationClient:
+    """Devolve a resposta programada e registra o prompt recebido."""
+
+    generation_model = "fake-generation"
+
+    def __init__(self, resposta: dict[str, object] | None = None, *, fail: bool = False) -> None:
+        self.resposta = resposta
+        self.fail = fail
+        self.prompts: list[tuple[str, str]] = []
+
+    async def generate_json(
+        self, *, system: str, user: str, response_schema: dict[str, object], temperature: float
+    ) -> object:
+        import json
+
+        from app.integrations.gemini.client import GeminiError, GenerationResult
+
+        self.prompts.append((system, user))
+        if self.fail:
+            raise GeminiError("falha injetada")
+        return GenerationResult(
+            text=json.dumps(self.resposta or {}),
+            model=self.generation_model,
+            prompt_tokens=100,
+            completion_tokens=50,
+            finish_reason="STOP",
+        )

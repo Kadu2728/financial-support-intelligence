@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, Select, func, select, update
+from sqlalchemy import CursorResult, Select, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.documents.models import Document, DocumentStatus, DocumentVersion
+from app.modules.documents.models import Document, DocumentChunk, DocumentStatus, DocumentVersion
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,3 +185,75 @@ class DocumentVersionRepository:
                 processed_at=datetime.now(UTC),
             )
         )
+
+    async def mark_pending(self, version_id: uuid.UUID) -> None:
+        await self._session.execute(
+            update(DocumentVersion)
+            .where(DocumentVersion.id == version_id)
+            .values(status=DocumentStatus.PENDING)
+        )
+
+    async def mark_processing(self, version_id: uuid.UUID) -> None:
+        await self._session.execute(
+            update(DocumentVersion)
+            .where(DocumentVersion.id == version_id)
+            .values(status=DocumentStatus.PROCESSING, error_code=None, error_detail=None)
+        )
+
+    async def promote_to_current(
+        self, versao: DocumentVersion, *, page_count: int | None, chunk_count: int
+    ) -> None:
+        """Torna a versao corrente e rebaixa a anterior, na mesma transacao.
+
+        A ordem importa: o indice parcial unico `uq_document_versions_current` recusa
+        duas versoes correntes do mesmo documento, entao a anterior precisa perder o
+        flag ANTES de esta receber. Com `autoflush=False` os dois UPDATEs precisam de
+        flush explicito entre eles.
+        """
+        await self._session.execute(
+            update(DocumentVersion)
+            .where(
+                DocumentVersion.document_id == versao.document_id,
+                DocumentVersion.id != versao.id,
+                DocumentVersion.is_current.is_(True),
+            )
+            .values(is_current=False, status=DocumentStatus.SUPERSEDED)
+        )
+        await self._session.flush()
+
+        versao.status = DocumentStatus.READY
+        versao.is_current = True
+        versao.page_count = page_count
+        versao.chunk_count = chunk_count
+        versao.error_code = None
+        versao.error_detail = None
+        versao.processed_at = datetime.now(UTC)
+        await self._session.flush()
+
+
+class DocumentChunkRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def replace_for_version(
+        self, version_id: uuid.UUID, chunks: Sequence[DocumentChunk]
+    ) -> None:
+        """Substitui todos os chunks da versao.
+
+        Reprocessar uma versao (extrator corrigido, modelo de embedding trocado)
+        precisa apagar os chunks antigos, senao a busca devolveria o mesmo trecho
+        duas vezes. A FK RESTRICT de `citations` bloqueia a exclusao de um chunk ja
+        citado — nesse caso o reprocessamento falha de forma visivel, que e o
+        comportamento correto: uma citacao historica nao pode ficar orfa.
+        """
+        await self._session.execute(
+            delete(DocumentChunk).where(DocumentChunk.document_version_id == version_id)
+        )
+        self._session.add_all(chunks)
+        await self._session.flush()
+
+    async def count_for_version(self, version_id: uuid.UUID) -> int:
+        total = await self._session.scalar(
+            select(func.count()).where(DocumentChunk.document_version_id == version_id)
+        )
+        return total or 0

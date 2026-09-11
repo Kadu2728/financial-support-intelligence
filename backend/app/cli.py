@@ -4,6 +4,8 @@ Existe por um motivo concreto: o cadastro de usuarios exige um ADMIN autenticado
 primeiro ADMIN nao tem quem o crie. Este e o unico caminho para resolver isso.
 
     .venv/Scripts/python -m app.cli create-admin --email a@b.com --name "Nome"
+    .venv/Scripts/python -m app.cli process-queue     # esvazia a fila de ingestao
+    .venv/Scripts/python -m app.cli reindex-stale     # re-embeda apos troca de modelo
 
 A senha e lida de forma interativa (`getpass`), nunca por argumento: argumentos de
 linha de comando ficam no historico do shell e aparecem na lista de processos.
@@ -67,6 +69,85 @@ async def _create_user(email: str, full_name: str, password: str, role: Role) ->
         await engine.dispose()
 
 
+async def _process_queue() -> int:
+    """Esvazia a fila de ingestao e sai. Util em dev e para indexar um acervo inicial
+    sem esperar o polling do worker embutido na API."""
+    from app.integrations.gemini.client import GeminiClient
+    from app.modules.documents.router import get_storage
+    from app.modules.ingestion.worker import IngestionWorker
+
+    settings = get_settings()
+    if not settings.gemini_configured:
+        print("GEMINI_API_KEY nao configurada em backend/.env.", file=sys.stderr)
+        return 1
+
+    engine = create_engine(settings)
+    gemini = GeminiClient(settings)
+    try:
+        worker = IngestionWorker(
+            settings=settings,
+            session_factory=create_session_factory(engine),
+            storage=get_storage(settings),
+            embeddings=gemini,
+        )
+        await worker.recover_stale()
+        processados = 0
+        while await worker.run_once():
+            processados += 1
+        print(f"Jobs processados: {processados}")
+        return 0
+    finally:
+        await gemini.aclose()
+        await engine.dispose()
+
+
+async def _reindex_stale() -> int:
+    """Re-enfileira versoes cujos chunks foram gerados por outro modelo de embedding.
+
+    Vetores de modelos diferentes no mesmo indice produzem ranking sem significado,
+    sem nenhum erro visivel. `embedding_model` e gravado por chunk exatamente para
+    que este comando saiba o que regenerar apos uma troca de modelo.
+    """
+    from sqlalchemy import text
+
+    settings = get_settings()
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+    try:
+        async with session_factory() as session:
+            versoes = (
+                (
+                    await session.execute(
+                        text("""
+                        SELECT DISTINCT dv.id
+                        FROM document_versions dv
+                        JOIN document_chunks c ON c.document_version_id = dv.id
+                        WHERE dv.is_current AND c.embedding_model <> :modelo
+                    """),
+                        {"modelo": settings.gemini_embedding_model},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            for version_id in versoes:
+                await session.execute(
+                    text("""
+                        INSERT INTO processing_jobs
+                            (id, document_version_id, job_type, status, attempts, max_attempts)
+                        VALUES (gen_random_uuid(), :id, 'INGEST', 'PENDING', 0, 3)
+                    """),
+                    {"id": version_id},
+                )
+            await session.commit()
+        alvo = settings.gemini_embedding_model
+        print(f"Versoes re-enfileiradas: {len(versoes)} (modelo alvo: {alvo})")
+        return 0
+    finally:
+        await engine.dispose()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli", description=__doc__)
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -79,12 +160,19 @@ def main(argv: list[str] | None = None) -> int:
         default=Role.ADMIN.value,
         choices=[papel.value for papel in Role],
     )
+    sub.add_parser("process-queue", help="Processa todos os jobs de ingestao pendentes")
+    sub.add_parser("reindex-stale", help="Re-enfileira versoes com embeddings de outro modelo")
 
     args = parser.parse_args(argv)
+
+    if args.comando == "process-queue":
+        return asyncio.run(_process_queue())
+    if args.comando == "reindex-stale":
+        return asyncio.run(_reindex_stale())
+
     senha = _ler_senha()
     if senha is None:
         return 1
-
     return asyncio.run(_create_user(args.email, args.full_name, senha, Role(args.role)))
 
 

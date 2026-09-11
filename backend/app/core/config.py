@@ -153,6 +153,57 @@ class Settings(BaseSettings):
             raise ValueError("STORAGE_BACKEND=s3 exige S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY.")
         return value
 
+    # --- Gemini ------------------------------------------------------------
+    # Vazia por padrao: a aplicacao sobe sem a chave (admin de documentos e login
+    # funcionam), mas o worker de ingestao e o copilot recusam-se a operar e dizem
+    # por que. Em producao a chave e obrigatoria — validador abaixo.
+    gemini_api_key: SecretStr = SecretStr("")
+    gemini_embedding_model: str = "gemini-embedding-001"
+    gemini_generation_model: str = "gemini-2.5-flash"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    gemini_timeout_seconds: float = 30.0
+    # Lotes de 64 textos por chamada de embedding (docs/rag-design.md §1).
+    gemini_embedding_batch_size: int = 64
+
+    @field_validator("gemini_api_key")
+    @classmethod
+    def _require_gemini_in_production(cls, value: SecretStr, info: ValidationInfo) -> SecretStr:
+        if info.data.get("app_env") is Environment.PRODUCTION and not value.get_secret_value():
+            raise ValueError("GEMINI_API_KEY e obrigatoria em producao.")
+        return value
+
+    @property
+    def gemini_configured(self) -> bool:
+        return bool(self.gemini_api_key.get_secret_value())
+
+    # --- Worker de ingestao ------------------------------------------------
+    # Roda dentro do processo da API (ADR-0004): um monolito com um so deploy. O
+    # intervalo de polling e curto porque a fila e uma tabela e o SELECT e barato.
+    worker_enabled: bool = True
+    worker_poll_interval_seconds: float = 3.0
+    # Job RUNNING ha mais tempo que isto e considerado orfao de um processo que
+    # morreu e volta para a fila.
+    worker_stale_after_minutes: int = 30
+
+    # --- Busca e RAG (docs/rag-design.md §4-§6) ----------------------------
+    search_candidates_per_leg: int = 30
+    search_top_k: int = 8
+    search_rrf_k: int = 60
+
+    # Gate de evidencia. Em configuracao, nao em codigo: recalibrar nao pode exigir
+    # deploy (ADR-0008).
+    rag_min_top_score: float = 0.55
+    rag_min_support_score: float = 0.45
+    rag_min_support_count: int = 2
+    rag_context_token_budget: int = 6000
+    rag_generation_temperature: float = 0.2
+    rag_max_question_chars: int = 1000
+
+    # --- Rate limiting (Fase 10) -------------------------------------------
+    # Por usuario, em memoria. Suficiente para uma instancia; multi-instancia
+    # exigiria Redis — decisao adiada de proposito ate haver mais de uma instancia.
+    rate_limit_copilot_per_minute: int = 20
+
     # --- Observabilidade ---------------------------------------------------
     log_level: str = "INFO"
     log_json: bool = Field(

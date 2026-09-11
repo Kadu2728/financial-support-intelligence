@@ -9,12 +9,16 @@ codigo morto que ninguem tem coragem de remover depois.
 
 from __future__ import annotations
 
+import json
+from contextlib import suppress
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
+from typing import Annotated
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, PostgresDsn, SecretStr, ValidationInfo, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Opcoes de conexao do libpq que o asyncpg nao reconhece. O Neon inclui as duas
 # primeiras na connection string que exibe no painel.
@@ -30,9 +34,19 @@ class Environment(StrEnum):
     TEST = "test"
 
 
+# Raiz do pacote backend, a partir deste arquivo (app/core/config.py -> backend/).
+#
+# O caminho do .env precisa ser absoluto. Com o valor relativo `.env`, o arquivo so e
+# encontrado quando o processo sobe de dentro de `backend/` — rodar
+# `uvicorn --app-dir backend` da raiz do repositorio carregava a configuracao INTEIRA
+# vazia, sem erro nenhum, e a aplicacao caia no default de localhost.
+# Configuracao que muda conforme o diretorio de onde se executa e armadilha silenciosa.
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_BACKEND_ROOT / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -120,14 +134,26 @@ class Settings(BaseSettings):
     # --- CORS --------------------------------------------------------------
     # Com o BFF (ADR-0003) o browser nunca chama o backend diretamente, entao esta lista
     # cobre apenas chamadas servidor-a-servidor e o acesso direto ao /docs em dev.
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    # `NoDecode` e obrigatorio aqui. Para campos de tipo lista, o pydantic-settings
+    # tenta `json.loads` no valor lido do .env ANTES de qualquer validador rodar —
+    # entao `CORS_ORIGINS=http://localhost:3000` explodia com JSONDecodeError e o
+    # validador abaixo nunca era alcancado. Sem um .env em disco o problema nao
+    # aparece, o que o torna invisivel em teste que constroi Settings na mao.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:3000"]
+    )
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
         """Aceita `A,B` alem de JSON — plataformas de deploy nao lidam bem com listas."""
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            texto = value.strip()
+            # Uma lista JSON continua sendo aceita, para quem ja configurou assim.
+            if texto.startswith("["):
+                with suppress(json.JSONDecodeError):
+                    return json.loads(texto)
+            return [origin.strip() for origin in texto.split(",") if origin.strip()]
         return value
 
     @property

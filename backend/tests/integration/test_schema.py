@@ -23,9 +23,11 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+from app.core.config import Settings
 from app.db.base import EMBEDDING_DIM
+from app.db.session import create_engine
 
 pytestmark = pytest.mark.integration
 
@@ -41,8 +43,14 @@ requires_db = pytest.mark.skipif(
 
 @pytest_asyncio.fixture
 async def conn() -> AsyncIterator[AsyncConnection]:
-    """Conexao em transacao revertida ao final: os testes nao deixam residuo."""
-    engine = create_async_engine(DATABASE_URL, connect_args={"statement_cache_size": 0})
+    """Conexao em transacao revertida ao final: os testes nao deixam residuo.
+
+    Usa `Settings` + `create_engine` em vez de `create_async_engine` com a URL crua:
+    e por ali que passam a troca de driver e o ajuste de TLS. Construir o engine na
+    mao aqui contornaria justamente o codigo que precisa ser exercitado — e falharia
+    com `No module named 'psycopg2'`, porque a URL do .env vem no formato sincrono.
+    """
+    engine = create_engine(Settings(database_url=DATABASE_URL))
     async with engine.connect() as connection:
         transaction = await connection.begin()
         try:
@@ -167,12 +175,14 @@ async def test_email_e_case_insensitive(conn: AsyncConnection) -> None:
     """CITEXT em acao: sem ele, dois cadastros com o mesmo e-mail coexistiriam."""
     base = uuid.uuid4().hex
 
+    # O MESMO endereco, apenas com caixa diferente — e isso que o CITEXT precisa
+    # tratar como duplicata. Dominios distintos nao exercitariam nada.
     await conn.execute(
         text("""
             INSERT INTO users (id, email, password_hash, full_name, role, is_active)
             VALUES (:id, :email, 'x', 'Teste', 'ANALYST', true)
         """),
-        {"id": uuid.uuid4(), "email": f"{base}@Teste.Local"},
+        {"id": uuid.uuid4(), "email": f"{base}@BancoExemplo.COM.BR"},
     )
 
     with pytest.raises(IntegrityError):

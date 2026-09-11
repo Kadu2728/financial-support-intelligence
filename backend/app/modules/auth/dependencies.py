@@ -51,6 +51,7 @@ def get_auth_service(
 ) -> AuthService:
     return AuthService(
         settings=settings,
+        session=session,
         users=users,
         refresh_tokens=RefreshTokenRepository(session),
     )

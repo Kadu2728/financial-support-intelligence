@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.orm import RelationshipProperty, class_mapper
+from sqlalchemy.orm import RelationshipProperty, class_mapper, configure_mappers
 
 from app.db.base import EMBEDDING_DIM, Base
 from app.db.registry import (
@@ -219,3 +219,16 @@ def test_feedback_e_unico_por_usuario_e_consulta() -> None:
 
 def test_answer_e_um_para_um_com_query() -> None:
     assert Answer.__table__.c.query_id.unique is True
+
+
+def test_todos_os_mappers_configuram() -> None:
+    """Relationships sao declarados por NOME e resolvidos so na primeira query.
+
+    Se um modelo referenciado nao tiver sido importado, o erro aparece em runtime —
+    e nao no entrypoint principal, que importa tudo por tabela, mas em um script ou
+    worker que importa apenas parte dos modelos. Foi exatamente assim que o CLI
+    quebrou com "expression 'RefreshToken' failed to locate a name".
+
+    `configure_mappers` forca a resolucao agora, no teste.
+    """
+    configure_mappers()

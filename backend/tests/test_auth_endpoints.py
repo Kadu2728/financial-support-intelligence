@@ -23,7 +23,7 @@ from app.main import create_app
 from app.modules.auth.dependencies import get_auth_service, get_user_repository
 from app.modules.auth.service import AuthService
 from app.modules.users.models import Role, User
-from tests.fakes import FakeRefreshTokenRepository, FakeUserRepository
+from tests.fakes import FakeRefreshTokenRepository, FakeSession, FakeUserRepository
 
 SENHA = "senha-do-analista-2026"
 PREFIXO = "/api/v1"
@@ -80,6 +80,7 @@ def app(auth_settings: Settings, users_repo: FakeUserRepository) -> Iterator[Fas
     def _service() -> AuthService:
         return AuthService(
             settings=auth_settings,
+            session=FakeSession(),  # type: ignore[arg-type]
             users=users_repo,  # type: ignore[arg-type]
             refresh_tokens=tokens_repo,  # type: ignore[arg-type]
         )

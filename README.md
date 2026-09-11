@@ -194,6 +194,17 @@ cd backend && .venv/Scripts/python -m pytest && .venv/Scripts/python -m ruff che
 cd frontend && npm run typecheck && npm run lint
 ```
 
+Os testes marcados `integration` exigem um PostgreSQL real e são pulados sem ele. Para rodá-los:
+
+```bash
+cd backend && DATABASE_URL="postgresql://...-pooler.../db" .venv/Scripts/python -m pytest -m integration
+```
+
+Eles cobrem o que um repositório em memória não alcança: que o DDL executa, que os índices existem,
+e o comportamento **transacional** — a detecção de reuso de refresh token escreve e depois levanta
+exceção, então sem um commit explícito a revogação seria desfeita pelo rollback. Um fake passa nos
+dois casos; só um banco de verdade distingue.
+
 ---
 
 ## Variáveis de ambiente

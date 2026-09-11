@@ -111,3 +111,21 @@ class FakeRefreshTokenRepository:
     @property
     def total(self) -> int:
         return len(self._tokens)
+
+
+class FakeSession:
+    """Sessao falsa que registra os commits.
+
+    Existe para o commit da deteccao de reuso (ver AuthService.refresh). Contar os
+    commits permite testar que ele acontece — mas nao substitui o teste de integracao,
+    que e o unico capaz de provar que a revogacao sobrevive ao rollback real.
+    """
+
+    def __init__(self) -> None:
+        self.commits = 0
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def rollback(self) -> None:
+        pass

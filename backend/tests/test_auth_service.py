@@ -23,7 +23,7 @@ from app.modules.auth.service import (
     InvalidCredentialsError,
 )
 from app.modules.users.models import Role, User
-from tests.fakes import FakeRefreshTokenRepository, FakeUserRepository
+from tests.fakes import FakeRefreshTokenRepository, FakeSession, FakeUserRepository
 
 SENHA = "senha-correta-do-analista"
 
@@ -62,6 +62,7 @@ def tokens_repo() -> FakeRefreshTokenRepository:
 def service(settings: Settings, user: User, tokens_repo: FakeRefreshTokenRepository) -> AuthService:
     return AuthService(
         settings=settings,
+        session=cast("Any", FakeSession()),
         users=cast("Any", FakeUserRepository([user])),
         refresh_tokens=cast("Any", tokens_repo),
     )
@@ -120,6 +121,7 @@ async def test_conta_desativada_e_recusada(settings: Settings) -> None:
     inativo = make_user(is_active=False)
     service = AuthService(
         settings=settings,
+        session=cast("Any", FakeSession()),
         users=cast("Any", FakeUserRepository([inativo])),
         refresh_tokens=cast("Any", FakeRefreshTokenRepository()),
     )
@@ -136,6 +138,7 @@ async def test_conta_desativada_com_senha_errada_nao_revela_que_existe(
     inativo = make_user(is_active=False)
     service = AuthService(
         settings=settings,
+        session=cast("Any", FakeSession()),
         users=cast("Any", FakeUserRepository([inativo])),
         refresh_tokens=cast("Any", FakeRefreshTokenRepository()),
     )

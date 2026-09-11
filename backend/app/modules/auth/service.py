@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.errors import AppError, ErrorCode, UnauthorizedError
@@ -55,10 +56,13 @@ class AuthService:
         self,
         *,
         settings: Settings,
+        session: AsyncSession,
         users: UserRepository,
         refresh_tokens: RefreshTokenRepository,
     ) -> None:
         self._settings = settings
+        # Necessaria apenas para o commit da deteccao de reuso; ver `refresh`.
+        self._session = session
         self._users = users
         self._refresh_tokens = refresh_tokens
 
@@ -126,6 +130,16 @@ class AuthService:
             # Este token ja foi usado e substituido. Se reapareceu, ou vazou ou foi
             # copiado — e nao ha como saber qual sessao e a legitima.
             revogadas = await self._refresh_tokens.revoke_all_for_user(stored.user_id)
+
+            # COMMIT EXPLICITO, obrigatorio. A excecao levantada logo abaixo dispara o
+            # rollback na borda da requisicao (app/db/session.py), que desfaria a
+            # revogacao recem-feita. Sem este commit a deteccao de reuso nao tem efeito
+            # nenhum: o token roubado continua valido e o atacante segue renovando.
+            #
+            # E o unico ponto do sistema que commita fora da borda, porque e o unico em
+            # que uma escrita precisa persistir apesar de a requisicao terminar em erro.
+            await self._session.commit()
+
             logger.warning(
                 "refresh_token_reuse_detected",
                 user_id=str(stored.user_id),

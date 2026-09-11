@@ -23,7 +23,10 @@ from app.db.session import create_engine, create_session_factory
 from app.modules.auth.router import router as auth_router
 from app.modules.documents.router import get_storage
 from app.modules.documents.router import router as documents_router
+from app.modules.feedback.router import router as feedback_router
 from app.modules.ingestion.worker import IngestionWorker
+from app.modules.queries.router import router as queries_router
+from app.modules.rag.router import router as copilot_router
 from app.modules.search.router import router as search_router
 from app.modules.users.router import router as users_router
 
@@ -124,8 +127,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users_router, prefix=settings.api_v1_prefix)
     app.include_router(documents_router, prefix=settings.api_v1_prefix)
     app.include_router(search_router, prefix=settings.api_v1_prefix)
+    app.include_router(copilot_router, prefix=settings.api_v1_prefix)
+    app.include_router(queries_router, prefix=settings.api_v1_prefix)
+    app.include_router(feedback_router, prefix=settings.api_v1_prefix)
 
-    # Fase 7+: rag, queries, feedback, intelligence
+    # Fase 9: intelligence
 
     return app
 

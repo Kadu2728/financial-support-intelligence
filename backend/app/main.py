@@ -20,6 +20,7 @@ from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.db.session import create_engine, create_session_factory
 from app.modules.auth.router import router as auth_router
+from app.modules.documents.router import router as documents_router
 from app.modules.users.router import router as users_router
 
 logger = get_logger(__name__)
@@ -85,8 +86,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router, prefix=settings.api_v1_prefix)
     app.include_router(users_router, prefix=settings.api_v1_prefix)
+    app.include_router(documents_router, prefix=settings.api_v1_prefix)
 
-    # Fase 4+: documents, ingestion, search, rag, queries, feedback, intelligence
+    # Fase 5+: ingestion, search, rag, queries, feedback, intelligence
 
     return app
 

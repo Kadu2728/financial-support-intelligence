@@ -2,7 +2,8 @@ import "server-only";
 
 import { cookies } from "next/headers";
 
-import { ApiError, backendFetch } from "@/lib/bff";
+import { ApiError, backendFetch, REQUEST_ID_HEADER } from "@/lib/bff";
+import { serverConfig } from "@/lib/server-config";
 
 /**
  * Sessao em cookies httpOnly first-party (ADR-0003).
@@ -122,6 +123,71 @@ export async function authenticatedFetch<T>(
 
   await saveSession(renovados);
   return backendFetch<T>(path, { ...options, token: renovados.access_token });
+}
+
+/**
+ * Encaminha uma requisicao do navegador ao backend, anexando o token.
+ *
+ * Repassa o corpo sem interpreta-lo: upload de documento chega como multipart, e
+ * desserializar para reserializar quebraria o boundary e ainda carregaria o arquivo
+ * inteiro na memoria do Next.
+ */
+export async function proxyToBackend(path: string, request: Request): Promise<Response> {
+  const { access, refresh } = await readTokens();
+
+  const corpo =
+    request.method === "GET" || request.method === "DELETE"
+      ? undefined
+      : await request.arrayBuffer();
+
+  // O Content-Type original precisa sobreviver — no multipart ele carrega o boundary.
+  const cabecalhos: Record<string, string> = {};
+  const tipo = request.headers.get("content-type");
+  if (tipo) cabecalhos["content-type"] = tipo;
+  const requestId = request.headers.get(REQUEST_ID_HEADER);
+  if (requestId) cabecalhos[REQUEST_ID_HEADER] = requestId;
+
+  async function chamar(token: string | null): Promise<Response> {
+    return fetch(`${serverConfig.backendUrl}${path}`, {
+      method: request.method,
+      headers: { ...cabecalhos, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: corpo,
+      cache: "no-store",
+    });
+  }
+
+  let resposta = access ? await chamar(access) : null;
+
+  if ((resposta === null || resposta.status === 401) && refresh) {
+    // Access expirado: renova e repete. Sem isto o usuario seria deslogado a cada
+    // 15 minutos de uso.
+    try {
+      const renovados = await backendFetch<TokenPair>("/api/v1/auth/refresh", {
+        method: "POST",
+        body: { refresh_token: refresh },
+      });
+      await saveSession(renovados);
+      resposta = await chamar(renovados.access_token);
+    } catch (error) {
+      await clearSession();
+      throw error;
+    }
+  }
+
+  if (resposta === null) {
+    throw new ApiError(401, "TOKEN_INVALID", "Sessao expirada. Faca login novamente.");
+  }
+
+  // O corpo e repassado como stream: um PDF de 20 MB nao precisa ser bufferizado aqui.
+  return new Response(resposta.body, {
+    status: resposta.status,
+    headers: {
+      "content-type": resposta.headers.get("content-type") ?? "application/json",
+      ...(resposta.headers.get("content-disposition")
+        ? { "content-disposition": resposta.headers.get("content-disposition")! }
+        : {}),
+    },
+  });
 }
 
 /** Perfil do usuario logado, ou null quando nao ha sessao valida. */

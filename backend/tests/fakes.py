@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+from app.integrations.storage.base import ObjectNotFound, StorageError
 from app.modules.auth.models import RefreshToken
 from app.modules.users.models import Role, User
 
@@ -129,3 +130,34 @@ class FakeSession:
 
     async def rollback(self) -> None:
         pass
+
+
+class FakeStorage:
+    """Storage em memoria, com falha injetavel.
+
+    A injecao de falha existe para exercitar a ordem storage-antes-do-banco: e o unico
+    jeito de verificar que uma falha de armazenamento nao deixa registro orfao.
+    """
+
+    def __init__(self, *, falhar_no_put: bool = False) -> None:
+        self.objetos: dict[str, bytes] = {}
+        self.falhar_no_put = falhar_no_put
+        self.deletados: list[str] = []
+
+    async def put(self, key: str, data: bytes, *, content_type: str) -> None:
+        if self.falhar_no_put:
+            raise StorageError("falha simulada de armazenamento")
+        self.objetos[key] = data
+
+    async def get(self, key: str) -> bytes:
+        try:
+            return self.objetos[key]
+        except KeyError as exc:
+            raise ObjectNotFound(key) from exc
+
+    async def delete(self, key: str) -> None:
+        self.deletados.append(key)
+        self.objetos.pop(key, None)
+
+    async def exists(self, key: str) -> bool:
+        return key in self.objetos

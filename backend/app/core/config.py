@@ -27,6 +27,11 @@ _OPCOES_LIBPQ = frozenset(
 )
 
 
+class StorageKind(StrEnum):
+    LOCAL = "local"
+    S3 = "s3"
+
+
 class Environment(StrEnum):
     LOCAL = "local"
     STAGING = "staging"
@@ -122,6 +127,30 @@ class Settings(BaseSettings):
                     "JWT_SECRET_KEY inseguro em producao. Gere com: "
                     'python -c "import secrets; print(secrets.token_urlsafe(48))"'
                 )
+        return value
+
+    # --- Storage de arquivos -----------------------------------------------
+    # `local` grava em disco e serve apenas para desenvolvimento: o filesystem do
+    # Railway e efemero e todo redeploy apagaria o acervo (ADR-0007).
+    storage_backend: StorageKind = StorageKind.LOCAL
+    storage_local_path: Path = _BACKEND_ROOT / "storage"
+
+    s3_endpoint_url: str | None = None
+    s3_bucket: str = "fsi-documents"
+    s3_region: str = "auto"
+    s3_access_key_id: SecretStr = SecretStr("")
+    s3_secret_access_key: SecretStr = SecretStr("")
+
+    @field_validator("s3_secret_access_key")
+    @classmethod
+    def _require_s3_credentials(cls, value: SecretStr, info: ValidationInfo) -> SecretStr:
+        """Falha ao subir, e nao no primeiro upload.
+
+        Sem esta checagem, a aplicacao iniciaria normalmente e so quebraria quando um
+        administrador tentasse enviar um documento — em producao, na frente do usuario.
+        """
+        if info.data.get("storage_backend") is StorageKind.S3 and not value.get_secret_value():
+            raise ValueError("STORAGE_BACKEND=s3 exige S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY.")
         return value
 
     # --- Observabilidade ---------------------------------------------------

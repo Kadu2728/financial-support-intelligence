@@ -14,11 +14,16 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.14",
     "pgvector>=0.3.6",
+    # Upload multipart dos documentos.
+    "python-multipart>=0.0.20",
     "pyjwt>=2.10",
     "argon2-cffi>=23.1",
 ]
 
 [project.optional-dependencies]
+# Producao com Cloudflare R2. Em dev o storage e local e boto3 nao e necessario.
+s3 = ["boto3>=1.35"]
+
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -80,6 +85,12 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false
+
+# boto3 e opcional (extra `s3`) e nao traz stubs. O acesso ao client ja e tipado
+# como Any em app/integrations/storage/s3.py, entao nada de util se perde.
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*"]
+ignore_missing_imports = true
 
 # ----------------------------------------------------------------------------
 # Pytest

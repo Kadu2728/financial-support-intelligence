@@ -4,7 +4,7 @@ Plataforma interna de inteligência operacional para equipes de suporte de insti
 Analistas perguntam em linguagem natural sobre políticas, procedimentos e manuais internos, e
 recebem respostas fundamentadas **com as fontes exatas** — documento, seção e trecho utilizado.
 
-> **Status:** em desenvolvimento. Fase 3 de 11 concluída (autenticação e autorização).
+> **Status:** em desenvolvimento. Fase 4 de 11 concluída (sistema de documentos).
 > O plano de fases está em [`docs/architecture.md`](docs/architecture.md).
 
 ---
@@ -221,7 +221,7 @@ completa e versionada; `.env` e `.env.local` nunca vão para o repositório.
 | `CORS_ORIGINS` | 1 | Origens permitidas, separadas por vírgula |
 | `DATABASE_URL` | 2 | Connection string do Neon — usar a variante **pooled** |
 | `JWT_SECRET_KEY` | 3 | Segredo de assinatura dos tokens |
-| `STORAGE_BACKEND` / `S3_*` | 4 | Backend de arquivos (`local` ou `s3`) |
+| `STORAGE_BACKEND` / `S3_*` | 4 | Backend de arquivos (`local` ou `s3`; produção exige `pip install -e '.[s3]'`) |
 | `GEMINI_API_KEY` | 5 | Chave da API do Gemini — **somente no backend** |
 | `GEMINI_EMBEDDING_MODEL` / `_DIM` | 5 | Modelo e dimensão dos embeddings |
 | `GEMINI_GENERATION_MODEL` | 7 | Modelo de geração |
@@ -274,7 +274,7 @@ consequências (inclusive as negativas) e alternativas descartadas:
 - [x] **Fase 1** — Setup do monorepo
 - [x] **Fase 2** — Banco de dados e migrations
 - [x] **Fase 3** — Autenticação e autorização
-- [ ] **Fase 4** — Sistema de documentos
+- [x] **Fase 4** — Sistema de documentos
 - [ ] **Fase 5** — Extração, chunking e embeddings
 - [ ] **Fase 6** — Busca semântica e híbrida
 - [ ] **Fase 7** — RAG e integração com Gemini

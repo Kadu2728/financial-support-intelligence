@@ -36,4 +36,5 @@ async function encaminhar(request: Request, contexto: RouteContext<"/api/backend
 export const GET = encaminhar;
 export const POST = encaminhar;
 export const PATCH = encaminhar;
+export const PUT = encaminhar;
 export const DELETE = encaminhar;

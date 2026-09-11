@@ -10,7 +10,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import APIRouter, FastAPI, Response, status
+from fastapi import APIRouter, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -155,7 +155,9 @@ async def health() -> dict[str, str]:
 
 
 @health_router.get("/health/ready", summary="Readiness")
-async def health_ready(session: SessionDep, response: Response) -> dict[str, object]:
+async def health_ready(
+    request: Request, session: SessionDep, response: Response
+) -> dict[str, object]:
     """Verifica o banco antes de declarar a instancia apta a receber trafego.
 
     Responde 503 quando o banco esta fora: a plataforma tira a instancia do balanceador
@@ -172,6 +174,12 @@ async def health_ready(session: SessionDep, response: Response) -> dict[str, obj
         checks["database"] = "unavailable"
         # A mensagem da excecao pode conter a connection string com a senha.
         logger.error("readiness_database_failed", error_type=type(exc).__name__)
+
+    # Informativo, nao bloqueia o readiness: a API serve login e administracao de
+    # documentos sem a chave. O frontend usa isto para avisar o analista em vez de
+    # deixa-lo descobrir pelo 503 do copilot.
+    settings: Settings = request.app.state.settings
+    checks["gemini"] = "configured" if settings.gemini_configured else "not_configured"
 
     if not healthy:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

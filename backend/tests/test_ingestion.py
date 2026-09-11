@@ -310,3 +310,21 @@ def test_contagem_de_tokens_e_conservadora() -> None:
 
 def test_texto_vazio_tem_zero_tokens() -> None:
     assert contar_tokens("") == 0
+
+
+def test_secao_curta_fundida_herda_a_secao_com_mais_texto() -> None:
+    """Um titulo de capitulo sozinho nao pode rotular o conteudo da secao seguinte."""
+    from app.modules.ingestion.chunking import dividir
+    from app.modules.ingestion.extractors.plaintext import MarkdownExtractor
+    from app.modules.ingestion.normalizer import normalizar
+
+    corpo = " ".join(["procedimento operacional detalhado"] * 40)
+    markdown = "\n\n".join(["# Manual de Cadastro", "## 1. Abertura de conta", corpo])
+    documento = normalizar(MarkdownExtractor().extrair(markdown.encode()))
+    chunks = dividir(documento)
+
+    assert len(chunks) == 1
+    assert chunks[0].section_path is not None
+    assert "Abertura de conta" in chunks[0].section_path
+    # O texto do titulo continua dentro do chunk: so o rotulo muda.
+    assert chunks[0].texto.startswith("Manual de Cadastro")

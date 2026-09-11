@@ -84,10 +84,15 @@ def dividir(
             continue
 
         if pendente is not None:
-            _, inicio_anterior, secao_anterior = pendente
+            texto_pendente, inicio_anterior, secao_anterior = pendente
             # Junta o acumulado a esta secao, preservando o texto original entre eles.
+            # O chunk herda a secao de quem contribui com MAIS texto: um titulo de
+            # capitulo sozinho ("Manual de Cadastro", 18 caracteres) nao pode rotular
+            # 500 caracteres da secao 1 — a citacao apontaria para o lugar errado.
+            if secao is None or (secao_anterior is not None and len(texto_pendente) >= len(texto)):
+                secao = secao_anterior
             texto = documento.texto[inicio_anterior : inicio + len(texto)]
-            inicio, secao = inicio_anterior, secao_anterior or secao
+            inicio = inicio_anterior
             tokens = contar_tokens(texto)
             pendente = None
 

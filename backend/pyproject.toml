@@ -24,6 +24,10 @@ dependencies = [
 # Producao com Cloudflare R2. Em dev o storage e local e boto3 nao e necessario.
 s3 = ["boto3>=1.35"]
 
+# Geracao do acervo sintetico de demonstracao (scripts/gerar_acervo.py). Nao e
+# necessario para rodar a aplicacao: os arquivos gerados ficam versionados.
+demo = ["reportlab>=4.2", "python-docx>=1.1"]
+
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",

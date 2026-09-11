@@ -1,0 +1,159 @@
+{
+  "sobre": "Conjunto de avaliacao do retrieval, usado na Fase 6 para calibrar os limiares do gate de evidencia e comparar os modos de busca (semantic, lexical, hybrid). Escrito junto do acervo: quem redigiu os documentos sabe o que cada um responde.",
+  "como_usar": "Para cada pergunta, executar a busca e verificar se algum chunk das secoes em `fontes_esperadas` aparece no top-K. Metricas: recall@8, MRR, taxa de recusa correta e taxa de recusa indevida.",
+  "classes": {
+    "literal": "Consulta por codigo, sigla ou numero. A perna LEXICAL deve dominar — embeddings diluem justamente o token que mais importa.",
+    "parafrase": "Pergunta sem sobreposicao de vocabulario com o documento. A perna SEMANTICA deve dominar.",
+    "multi_secao": "Resposta exige combinar duas secoes, as vezes de documentos diferentes. Valida o top-K e a deduplicacao por secao.",
+    "fora_do_acervo": "Nao ha resposta possivel. O gate de evidencia DEVE recusar. Uma resposta aqui e falha grave, nao imprecisao."
+  },
+  "perguntas": [
+    {
+      "id": "lit-01",
+      "classe": "literal",
+      "pergunta": "O que significa o codigo COD-2041?",
+      "fontes_esperadas": ["GLO-REF-001 3", "MAN-CAD-001 3.1"],
+      "resposta_esperada": "Cadastro com atualizacao vencida ou a vencer em menos de 60 dias."
+    },
+    {
+      "id": "lit-02",
+      "classe": "literal",
+      "pergunta": "Para que serve o formulario FOR-CAD-017?",
+      "fontes_esperadas": ["GLO-REF-001 4", "MAN-CAD-001 2.2"],
+      "resposta_esperada": "Declaracao de residencia quando o comprovante esta em nome de terceiro."
+    },
+    {
+      "id": "lit-03",
+      "classe": "literal",
+      "pergunta": "Em qual transacao registro uma contestacao?",
+      "fontes_esperadas": ["GLO-REF-001 2", "GUI-CON-011 4"],
+      "resposta_esperada": "CON-REG."
+    },
+    {
+      "id": "lit-04",
+      "classe": "literal",
+      "pergunta": "O que e o MED no Pix?",
+      "fontes_esperadas": ["GLO-REF-001 1", "PRO-PIX-007 4.2"],
+      "resposta_esperada": "Mecanismo Especial de Devolucao, acionavel em ate 80 dias corridos."
+    },
+    {
+      "id": "lit-05",
+      "classe": "literal",
+      "pergunta": "Qual o limite de transferencia de uma conta em restricao parcial?",
+      "fontes_esperadas": ["MAN-CAD-001 4", "GLO-REF-001 5"],
+      "resposta_esperada": "R$ 5.000,00 por dia."
+    },
+    {
+      "id": "par-01",
+      "classe": "parafrase",
+      "pergunta": "De quanto em quanto tempo o cliente precisa revisar os dados dele?",
+      "fontes_esperadas": ["MAN-CAD-001 3.1"],
+      "resposta_esperada": "24 meses no perfil padrao, 12 meses em risco elevado."
+    },
+    {
+      "id": "par-02",
+      "classe": "parafrase",
+      "pergunta": "O cliente quer sair do banco. O que preciso resolver antes?",
+      "fontes_esperadas": ["PRO-ENC-002 2"],
+      "resposta_esperada": "Quitar saldo devedor, transferir saldo credor, cancelar debitos automaticos, devolver cheques e encerrar investimentos."
+    },
+    {
+      "id": "par-03",
+      "classe": "parafrase",
+      "pergunta": "Posso contar para o cliente que a conta dele esta sendo investigada?",
+      "fontes_esperadas": ["POL-PLD-004 5.2"],
+      "resposta_esperada": "Nao. E vedado informar que uma operacao foi objeto de analise ou comunicacao."
+    },
+    {
+      "id": "par-04",
+      "classe": "parafrase",
+      "pergunta": "Alguem ligou dizendo que mandou dinheiro para a pessoa errada. Como proceder?",
+      "fontes_esperadas": ["PRO-PIX-007 4.1"],
+      "resposta_esperada": "Registrar na transacao PIX-DEV; a instituicao do recebedor tem 7 dias corridos para analisar."
+    },
+    {
+      "id": "par-05",
+      "classe": "parafrase",
+      "pergunta": "Um cliente pediu meu numero de WhatsApp para mandar os documentos. Pode?",
+      "fontes_esperadas": ["POL-SEG-009 4"],
+      "resposta_esperada": "Nao. E vedado registrar dados sensiveis fora dos sistemas corporativos."
+    },
+    {
+      "id": "par-06",
+      "classe": "parafrase",
+      "pergunta": "Quanto tempo tenho para responder uma queixa de cobranca indevida?",
+      "fontes_esperadas": ["MAN-ATE-002 2.2"],
+      "resposta_esperada": "10 dias uteis, por ser classificada como reclamacao."
+    },
+    {
+      "id": "mul-01",
+      "classe": "multi_secao",
+      "pergunta": "Quais sao os passos da atualizacao cadastral e o que acontece se o cliente nao fizer?",
+      "fontes_esperadas": ["MAN-CAD-001 3.2", "MAN-CAD-001 4"],
+      "resposta_esperada": "Seis etapas descritas na secao 3.2; sem regularizacao, restricao parcial em 30 dias e total em 90."
+    },
+    {
+      "id": "mul-02",
+      "classe": "multi_secao",
+      "pergunta": "Cliente nao reconhece um Pix. Qual o prazo e qual o procedimento completo?",
+      "fontes_esperadas": ["PRO-PIX-007 5", "PRO-PIX-007 4.2", "GUI-CON-011 4"],
+      "resposta_esperada": "Tratar como fraude, registrar contestacao (CON-REG) e acionar o MED em ate 80 dias corridos."
+    },
+    {
+      "id": "mul-03",
+      "classe": "multi_secao",
+      "pergunta": "Como atender um cliente que e pessoa politicamente exposta e quer abrir conta?",
+      "fontes_esperadas": ["MAN-CAD-001 6", "POL-PLD-004 4"],
+      "resposta_esperada": "Exige aprovacao previa da area de Prevencao, risco minimo medio e monitoramento reforcado. Nao se recusa atendimento apenas por essa condicao."
+    },
+    {
+      "id": "mul-04",
+      "classe": "multi_secao",
+      "pergunta": "Qual o prazo para contestar uma compra no cartao de credito e quando o cliente recebe o valor de volta antes da analise?",
+      "fontes_esperadas": ["GUI-CON-011 2", "GUI-CON-011 5"],
+      "resposta_esperada": "90 dias corridos da fatura; credito provisorio automatico ate R$ 3.000,00 sem contestacao negada nos ultimos 12 meses."
+    },
+    {
+      "id": "mul-05",
+      "classe": "multi_secao",
+      "pergunta": "O cliente quer trocar o titular da conta para o filho. Como faco?",
+      "fontes_esperadas": ["MAN-CAD-001 5", "PRO-ENC-002 3"],
+      "resposta_esperada": "Conta individual nao admite transferencia de titularidade: encerrar a conta atual e abrir nova em nome do novo titular."
+    },
+    {
+      "id": "fora-01",
+      "classe": "fora_do_acervo",
+      "pergunta": "Qual a taxa de juros do financiamento imobiliario?",
+      "fontes_esperadas": [],
+      "resposta_esperada": "RECUSA. O acervo nao trata de credito imobiliario."
+    },
+    {
+      "id": "fora-02",
+      "classe": "fora_do_acervo",
+      "pergunta": "Como emitir a segunda via do boleto do consorcio?",
+      "fontes_esperadas": [],
+      "resposta_esperada": "RECUSA. Consorcio nao esta no acervo."
+    },
+    {
+      "id": "fora-03",
+      "classe": "fora_do_acervo",
+      "pergunta": "Qual o horario de funcionamento da agencia da Avenida Paulista?",
+      "fontes_esperadas": [],
+      "resposta_esperada": "RECUSA. O acervo tem horario da central telefonica, nao de agencias especificas."
+    },
+    {
+      "id": "fora-04",
+      "classe": "fora_do_acervo",
+      "pergunta": "Quantos funcionarios o banco tem?",
+      "fontes_esperadas": [],
+      "resposta_esperada": "RECUSA. Informacao institucional ausente do acervo."
+    },
+    {
+      "id": "fora-05",
+      "classe": "fora_do_acervo",
+      "pergunta": "Qual o procedimento para abertura de conta de pessoa juridica?",
+      "fontes_esperadas": [],
+      "resposta_esperada": "RECUSA, e a mais dificil do conjunto: o acervo trata de abertura de conta e menciona CNPJ em chaves Pix, entao ha atracao semantica forte. Mas o procedimento de PJ nao existe nos documentos."
+    }
+  ]
+}

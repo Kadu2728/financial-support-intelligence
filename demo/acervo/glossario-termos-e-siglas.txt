@@ -1,0 +1,70 @@
+GLOSSARIO DE TERMOS E SIGLAS
+==============================================================================
+Banco Exemplo S.A. | GLO-REF-001 | Versao 5.4
+
+Documento fictício, gerado para demonstração técnica do Financial Support Intelligence. O Banco Exemplo S.A. não existe. Prazos, valores e procedimentos descritos são inventados e não constituem orientação real.
+==============================================================================
+
+1 Siglas
+------------------------------------------------------------------------------
+CCS — Cadastro de Clientes do Sistema Financeiro Nacional.
+
+CPF — Cadastro de Pessoas Fisicas.
+
+CTPS — Carteira de Trabalho e Previdência Social.
+
+KYC — Know Your Customer, em portugues Conheca Seu Cliente. Ver POL-PLD-004, seção 2.
+
+MED — Mecanismo Especial de Devolução, aplicavel a transações Pix. Ver PRO-PIX-007, seção 4.2.
+
+PEP — Pessoa Politicamente Exposta. Ver POL-PLD-004, seção 4.
+
+PLD/FT — Prevenção a Lavagem de Dinheiro e ao Financiamento do Terrorismo.
+
+SLA — Service Level Agreement, o prazo acordado de resposta. Ver MAN-Até-002, seção 2.
+
+2 Códigos de transação
+------------------------------------------------------------------------------
+Até-ESC — Escalonamento de demanda de atendimento.
+
+CAD-ATU — Atualização cadastral.
+
+CON-REG — Registro de contestação de transação.
+
+CTA-ENC — Pedido de encerramento de conta.
+
+PIX-DEV — Solicitação de devolução de Pix.
+
+PLD-ALE — Registro de situacao de alerta de prevenção.
+
+3 Códigos de alerta em tela
+------------------------------------------------------------------------------
+COD-2041 — Cadastro com atualização vencida ou a vencer em menos de 60 dias.
+
+COD-2055 — Conta em restrição parcial por cadastro desatualizado.
+
+COD-2061 — Conta em restrição total por cadastro desatualizado.
+
+COD-3320 — Cliente classificado como risco alto em PLD.
+
+COD-3325 — Cliente enquadrado como pessoa politicamente exposta.
+
+COD-4102 — Conta em processo de encerramento.
+
+4 Formulários
+------------------------------------------------------------------------------
+FOR-CAD-003 — Coleta de alterações cadastrais.
+
+FOR-CAD-017 — Declaração de residência por terceiro.
+
+FOR-ENC-005 — Termo de encerramento de conta.
+
+5 Termos
+------------------------------------------------------------------------------
+Crédito provisorio — valor creditado ao cliente durante a analise de uma contestação, sujeito a reversão. Ver GUI-CON-011, seção 5.
+
+Identificação positiva — confirmação da identidade do cliente por dados cadastrais e perguntas de segurança antes de qualquer operação sensivel.
+
+Restrição parcial — estado da conta que bloqueia crédito, investimento e transferências acima de R$ 5.000,00 por dia.
+
+Restrição total — estado da conta que permite apenas saque, pagamento de contas do titular e encerramento.

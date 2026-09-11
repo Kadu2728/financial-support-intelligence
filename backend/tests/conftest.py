@@ -12,6 +12,19 @@ from app.core.dependencies import get_session
 from app.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def _sem_gemini_do_ambiente(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A suite nunca usa a chave real do `.env` do desenvolvedor.
+
+    Variavel de ambiente tem precedencia sobre o arquivo `.env` no
+    pydantic-settings; vazia, deixa `gemini_configured` falso. Quem precisa de
+    chave passa `gemini_api_key=...` ao construir `Settings` — argumento vence os
+    dois. O worker tambem fica desligado: nenhum teste deve disparar ingestao real.
+    """
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("WORKER_ENABLED", "false")
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Configuracao isolada por teste.

@@ -15,6 +15,7 @@ sem banco.
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from collections.abc import Sequence
@@ -117,6 +118,33 @@ def fundir(
     ]
 
 
+# Tokens que merecem casamento exato: contem digito ("3.978", "COD-2041", "5.000,00"),
+# sao sigla em caixa alta ("MED", "PIX", "PLD") ou frase entre aspas.
+_COM_DIGITO = re.compile(r"\d")
+_SIGLA = re.compile(r"^[A-ZÀ-Ý]{2,}$")
+_ENTRE_ASPAS = re.compile(r'"([^"]{2,})"')
+_PONTUACAO_BORDA = re.compile(r"^[^\wÀ-ÿ$]+|[^\wÀ-ÿ$%]+$")
+
+
+def termos_exatos(pergunta: str) -> list[str]:
+    """Extrai da pergunta o que a perna lexical deve casar literalmente.
+
+    E o inverso do stopword: em vez de remover o que nao importa, seleciona o que
+    o embedding tende a diluir — codigos, numeros de norma, valores e siglas. Uma
+    pergunta sem nenhum desses nao ganha perna lexical na busca hibrida.
+    """
+    termos: list[str] = [frase.strip() for frase in _ENTRE_ASPAS.findall(pergunta)]
+    sem_aspas = _ENTRE_ASPAS.sub(" ", pergunta)
+    for bruto in sem_aspas.split():
+        token = _PONTUACAO_BORDA.sub("", bruto)
+        if len(token) < 2:
+            continue
+        if _COM_DIGITO.search(token) or _SIGLA.match(token):
+            termos.append(token)
+    # Preserva a ordem e remove repeticoes.
+    return list(dict.fromkeys(termos))
+
+
 def deduplicar_por_secao(hits: Sequence[Hit]) -> list[Hit]:
     """Mantem o melhor chunk de cada secao.
 
@@ -180,8 +208,17 @@ class SearchService:
                 vetor = await self._embed(pergunta)
             semanticos = await self._repo.semantic(vetor, limit=por_perna)
 
-        if mode is not SearchMode.SEMANTIC:
+        if mode is SearchMode.LEXICAL:
             lexicais = await self._repo.lexical(pergunta, limit=por_perna)
+        elif mode is SearchMode.HYBRID:
+            # Medido na Fase 6 (docs/rag-design.md §10): a perna lexical sobre a
+            # pergunta inteira quase nunca casa todos os termos e cai num OR de
+            # palavras comuns — ruido que o RRF promove como se fosse sinal, e que
+            # derrubou o recall das parafrases de 0.83 para 0.33. Ela entra na fusao
+            # apenas com termos exatos, que e onde embeddings falham e ela acerta.
+            exatos = termos_exatos(pergunta)
+            if exatos:
+                lexicais = await self._repo.lexical_exact(exatos, limit=por_perna)
 
         fundidos = fundir(
             [c for c, _ in semanticos],

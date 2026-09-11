@@ -93,9 +93,36 @@ async def test_semantica_e_hibrida_trazem_similaridade_para_todos(
     # o gate precisa de um numero comparavel por finalista.
     assert all(h.similarity is not None for h in hibrida.hits)
     assert hibrida.embedding is not None and len(hibrida.embedding) == 768
-    # O topo da hibrida esta nas duas pernas.
-    topo = hibrida.hits[0]
-    assert topo.semantic_rank is not None and topo.lexical_rank is not None
+    # Pergunta sem termo exato: a perna lexical nao participa (docs/rag-design.md
+    # §10 — sobre a pergunta inteira ela so injetava ruido na fusao).
+    assert all(h.lexical_rank is None for h in hibrida.hits)
+
+
+@requires_db
+async def test_hibrida_usa_a_perna_lexical_so_com_termo_exato(
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+    storage: FakeStorage,
+    admin: User,
+) -> None:
+    _, version_id = await upload(
+        session_factory, storage, admin, conteudo=MANUAL.encode(), filename="m.md"
+    )
+    await build_worker(settings, session_factory, storage).run_once(version_ids={version_id})
+
+    async with session_factory() as session:
+        # "CNPJ" e sigla: casamento exato. So a secao 1 (abertura) a contem.
+        resultado = await build_search(settings, session).search(
+            "documentos exigidos com CNPJ", mode=SearchMode.HYBRID
+        )
+
+    # O banco e compartilhado com o acervo real (que tambem fala de CNPJ): so os
+    # chunks desta versao contam para a asserção.
+    proprios = [h for h in resultado.hits if h.chunk.version_id == version_id]
+    com_lexical = [h for h in proprios if h.lexical_rank is not None]
+    assert len(com_lexical) == 1
+    assert "Abertura" in (com_lexical[0].chunk.section_path or "")
+    assert all(h.lexical_rank is None for h in proprios if h is not com_lexical[0])
 
 
 @requires_db

@@ -88,6 +88,20 @@ class SearchRepository:
         frouxa = func.to_tsquery(FTS_CONFIG, " | ".join(termos))
         return await self._lexical_com(frouxa, limit)
 
+    async def lexical_exact(
+        self, termos: Sequence[str], *, limit: int
+    ) -> list[tuple[uuid.UUID, float]]:
+        """Casamento estrito de TODOS os termos informados.
+
+        `plainto_tsquery` faz AND de tudo que o parser produz — "COD-2041" vira
+        'cod-2041' & 'cod' & '2041' — que e o comportamento desejado para codigos.
+        E a perna lexical usada na busca hibrida: so entra na fusao com termos que
+        merecem casamento exato (ver `SearchService.termos_exatos`).
+        """
+        if not termos:
+            return []
+        return await self._lexical_com(func.plainto_tsquery(FTS_CONFIG, " ".join(termos)), limit)
+
     async def _lexical_com(self, tsquery: object, limit: int) -> list[tuple[uuid.UUID, float]]:
         rank = func.ts_rank_cd(DocumentChunk.tsv, tsquery)
         consulta = (

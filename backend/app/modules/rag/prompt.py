@@ -31,7 +31,7 @@ from app.modules.search.service import Hit
 # documento e podem esconder instrucoes ou quebrar o delimitador.
 _CONTROLE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 # Tentativas de fechar/abrir um bloco de contexto vindas do conteudo.
-_FALSO_DELIMITADOR = re.compile(r"</?C\d+(?:-[0-9a-f]+)?>", re.IGNORECASE)
+_FALSO_DELIMITADOR = re.compile(r"</?(?:trecho|C\d+)(?:-[0-9a-f]+)?\b[^>]*>", re.IGNORECASE)
 
 SYSTEM_PROMPT = """\
 Voce e o assistente interno de uma equipe de suporte de instituicao financeira. \
@@ -130,10 +130,14 @@ def montar_contexto(
         if chunk.page_number is not None:
             atributos.append(f'pagina="{chunk.page_number}"')
 
+        # O identificador citavel e um ATRIBUTO (`id="C1"`), separado do nome da
+        # tag, que carrega o sufixo aleatorio. Com o sufixo no nome da tag, o
+        # modelo copiava "C1-a8f3e2" na citacao e a validacao a rejeitava — uma
+        # recusa indevida numa resposta correta (medido na calibracao da Fase 6).
         bloco = (
-            f"<{identificador}-{sufixo} {' '.join(atributos)}>\n"
+            f'<trecho-{sufixo} id="{identificador}" {" ".join(atributos)}>\n'
             f"{sanitizar(chunk.content).strip()}\n"
-            f"</{identificador}-{sufixo}>"
+            f"</trecho-{sufixo}>"
         )
         tokens = contar_tokens(bloco)
         if acumulado + tokens > orcamento_tokens and blocos:
@@ -162,8 +166,9 @@ def montar_mensagem(pergunta: str, contexto: Contexto) -> str:
     documento.
     """
     return (
-        "TRECHOS DOS DOCUMENTOS INTERNOS (cada bloco e um trecho; cite pelo "
-        "identificador C1, C2... indicado na abertura do bloco):\n\n"
+        "TRECHOS DOS DOCUMENTOS INTERNOS. Cada bloco <trecho-...> e um trecho; o "
+        'atributo id (por exemplo id="C1") e o identificador a citar, entre colchetes: '
+        "[C1]. Cite apenas o id, nunca o nome da tag.\n\n"
         f"{contexto.texto}\n\n"
         "PERGUNTA DO ANALISTA:\n"
         f"{sanitizar(pergunta).strip()}"

@@ -67,9 +67,11 @@ PERGUNTA → embedding
 ```
 
 **Busca híbrida, não apenas vetorial.** O corpus é denso em tokens exatos (`PIX`, `Circular 3.978`,
-códigos de produto) — casos em que embeddings falham e full-text acerta. E o inverso vale para
-paráfrases. As duas pernas são fundidas por Reciprocal Rank Fusion, tudo dentro do PostgreSQL
-([ADR-0002](docs/adr/0002-busca-hibrida-rrf.md)).
+códigos de produto) — casos em que embeddings tendem a falhar e full-text acerta. As duas pernas
+são fundidas por Reciprocal Rank Fusion, tudo dentro do PostgreSQL
+([ADR-0002](docs/adr/0002-busca-hibrida-rrf.md)). A medição mostrou que a perna lexical sobre a
+pergunta inteira só injetava ruído; ela participa apenas com termos exatos — e a decisão está
+documentada com os números, antes e depois ([rag-design §10](docs/rag-design.md)).
 
 ### Autenticação
 
@@ -194,7 +196,9 @@ cd backend && .venv/Scripts/python -m pytest && .venv/Scripts/python -m ruff che
 cd frontend && npm run typecheck && npm run lint
 ```
 
-Os testes marcados `integration` exigem um PostgreSQL real e são pulados sem ele. Para rodá-los:
+Os testes marcados `integration` exigem um PostgreSQL real e são pulados sem ele. **Pare a API
+antes** (ou defina `WORKER_ENABLED=false`): com a chave do Gemini configurada, o worker embutido
+consome jobs do mesmo banco e disputa os que os testes criam. Para rodá-los:
 
 ```bash
 cd backend && DATABASE_URL="postgresql://...-pooler.../db" .venv/Scripts/python -m pytest -m integration
@@ -324,5 +328,5 @@ consequências (inclusive as negativas) e alternativas descartadas:
 - [x] **Fase 9** — Dashboard e Support Intelligence
 - [x] **Fase 10** — Rate limiting, hardening e observabilidade
 - [ ] **Fase 11** — Deploy (arquivos prontos; exige contas Vercel/Railway/R2)
-- [ ] **Calibração** — rodar `scripts/avaliar_busca.py` com a chave do Gemini e registrar os
-  números em `docs/rag-design.md` §10
+- [x] **Calibração** — `scripts/avaliar_busca.py` rodado com a chave real; números, diagnóstico e
+  os dois bugs de contrato que só o modelo real revelou estão em `docs/rag-design.md` §10

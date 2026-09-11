@@ -107,7 +107,7 @@ async def test_resposta_com_citacoes_e_persistida_e_relida(
     system, user = geracao.prompts[0]
     assert "C1, C2" in system
     assert user.rstrip().endswith(PERGUNTA)
-    assert "<C1-" in user
+    assert 'id="C1"' in user
 
     # Releitura pelo caminho do historico: mesma forma, citacoes resolvidas.
     async with session_factory() as session:

@@ -71,6 +71,7 @@ pergunta
 | Parâmetro | Valor | Justificativa |
 |---|---|---|
 | Candidatos por perna | 30 | Recall alto antes da fusão |
+| Perna lexical (hybrid) | só com **termos exatos** | Tokens com dígito, siglas em caixa alta ou frases entre aspas, casados por `plainto_tsquery` (AND). Sem termo exato, a perna não participa — medido em §10: sobre a pergunta inteira ela só injetava ruído |
 | `k` do RRF | 60 | Valor canônico; amortece a influência das primeiras posições |
 | Top-K final | 8 | Cabe no orçamento de contexto com folga |
 | Dedup | por `section_path` | Evita que 4 chunks da mesma seção ocupem o contexto inteiro |
@@ -81,12 +82,13 @@ sobre soma ponderada de scores.
 
 ## 5. Gate de evidência
 
-**A calibrar na Fase 6.** Valores de partida:
+**Calibrado em 2026-09-11** (§10). Os valores de partida (0.55/0.45) eram baixos demais para o
+`gemini-embedding-001`, cujo cosine é comprimido:
 
-| Condição | Valor inicial |
-|---|---|
-| Similaridade cosine do melhor chunk | `>= 0.55` |
-| Chunks acima do piso | `>= 2` acima de `0.45` |
+| Condição | Valor inicial | Calibrado |
+|---|---|---|
+| Similaridade cosine do melhor chunk | `>= 0.55` | `>= 0.66` |
+| Chunks acima do piso | `>= 2` acima de `0.45` | `>= 2` acima de `0.64` |
 
 Se qualquer condição falhar, o sistema retorna a recusa canônica **sem chamar o Gemini**.
 
@@ -119,7 +121,7 @@ atributo permitem que o modelo referencie a seção naturalmente no texto da res
 | Modelo | env `GEMINI_GENERATION_MODEL`, classe Flash |
 | Temperatura | 0.2 — resposta factual, não criativa |
 | Formato | JSON mode com schema fixo |
-| Timeout | 30 s, com erro explícito na UI |
+| Timeout | 60 s, com erro explícito na UI — sob carga o Flash leva 20–30 s |
 
 ```json
 { "answer": "string",
@@ -171,22 +173,67 @@ Ferramenta: `scripts/avaliar_busca.py` (exige `GEMINI_API_KEY` e o acervo indexa
 
 ### Resultados
 
-> **Pendente.** A avaliação exige a chave do Gemini para embeddar as perguntas e o acervo. Os testes
-> de integração validam a mecânica da busca com embeddings falsos (hashing de palavras), o que não
-> mede qualidade semântica. Preencher esta tabela após a primeira execução do script:
+Medidos em 2026-09-11 com `gemini-embedding-001` (768 dims) sobre os 8 documentos do acervo
+(60 chunks), K = 8. Recusa = decisão do gate com os limiares calibrados abaixo.
+
+**Antes da correção da perna lexical** (fusão da pergunta inteira, com fallback OR):
 
 | Modo | Literal (5) | Paráfrase (6) | Multi-seção (5) | Fora do acervo (5) |
 |---|---|---|---|---|
-| semantic | recall@8 — · MRR — | — | — | recusas —/5 |
-| lexical | — | — | — | — |
-| hybrid | — | — | — | — |
+| semantic | recall 1.00 · MRR 0.90 | 0.83 · 0.75 | 1.00 · 1.00 | recusas 0/5 |
+| lexical | 1.00 · 0.60 | 0.17 · 0.06 | 1.00 · 0.53 | 1/5 |
+| **hybrid** | 1.00 · **0.77** | **0.33 · 0.17** | 1.00 · 1.00 | 0/5 |
+
+A híbrida era **pior** que a semântica pura. Diagnóstico: `websearch_to_tsquery` (AND de todos os
+termos) devolveu zero em 19 das 20 perguntas — linguagem natural nunca casa todos os termos — e a
+perna lexical caía no fallback OR, injetando até 30 chunks de palavras comuns que o RRF promovia como
+sinal. O gate com os limiares iniciais (0.55/0.45) não recusou nenhuma pergunta fora do acervo:
+o cosine deste modelo é comprimido, e "sem resposta" fica em 0.57–0.67.
+
+**Depois** (perna lexical só com termos exatos; gate 0.66/0.64/2):
+
+| Modo | Literal (5) | Paráfrase (6) | Multi-seção (5) | Fora do acervo (5) |
+|---|---|---|---|---|
+| semantic | 1.00 · 0.90 | 0.83 · 0.75 | 1.00 · 1.00 | recusas 4/5 |
+| lexical | 1.00 · 0.60 | 0.17 · 0.06 | 1.00 · 0.53 | 4/5 |
+| **hybrid** | 1.00 · **0.90** | **0.83 · 0.75** | 1.00 · 1.00 | **4/5** · 0 indevidas |
+
+Distribuição da similaridade do topo (hybrid): literal 0.687–0.759 · paráfrase 0.664–0.768 ·
+multi-seção 0.739–0.773 · **fora do acervo 0.569–0.674**.
+
+Leituras honestas dos números:
+
+- **Neste acervo, a semântica sozinha já resolve as literais.** `gemini-embedding-001` representa
+  bem `COD-2041` e `FOR-CAD-017` quando o código aparece literalmente no chunk. A perna lexical
+  não melhorou o recall aqui; ela existe pela robustez em acervos maiores, onde o embedding dilui
+  o token — e agora só participa quando tem algo preciso a dizer (§4).
+- **A única paráfrase perdida (`par-06`) não é falha de retrieval.** O conteúdo da seção 2.2 foi
+  recuperado na posição 4, dentro do chunk da seção-mãe "2": as subseções 2.1 e 2.2 eram menores
+  que 64 tokens e foram fundidas na mãe pelo chunker, que mantém o rótulo dela. O matcher exige o
+  rótulo da subseção. Recall real contando o chunk-mãe: 6/6.
+- **Nenhum limiar separa `fora-05` de `par-05`.** "Abertura de conta de pessoa *jurídica*" (fora,
+  0.674) e "posso passar meu WhatsApp?" (dentro, 0.664) estão a 0.01 um do outro. Com 0.66 o gate
+  deixa `fora-05` passar — e **o modelo recusa** (`insufficient_evidence`), verificado com o RAG
+  real. Com 0.68 o gate recusaria os 5/5, mas negaria `par-05`. Ficou 0.66: a camada 1 barra o
+  óbvio, a camada 2 barra o sutil. É exatamente para isso que há cinco camadas.
+
+Dois bugs de contrato só apareceram com o modelo real, e viraram testes:
+
+1. O modelo citava `[C1-a8f3e2]` copiando o sufixo aleatório do delimitador; a validação rejeitava
+   e produzia uma recusa indevida numa resposta correta. O identificador virou atributo
+   (`<trecho-sufixo id="C1">`) e a validação tolera o sufixo quando é o desta requisição.
+2. Marcadores compostos `[C1, C2]` não eram reconhecidos nem pela validação nem pelo renderizador.
 
 ## 11. Limitações conhecidas
 
-- **`ts_rank_cd` não pondera por raridade do termo (sem IDF).** No fallback OR da perna lexical,
-  termos frequentes ("conta", "cliente") podem dominar o ranking. A perna semântica compensa na
-  fusão; em modo puramente lexical o efeito é visível. Alternativa futura: `ts_rank` com pesos por
-  posição ou BM25 via extensão (`pg_search`), ambas adiadas até haver medição que justifique.
+- **`ts_rank_cd` não pondera por raridade do termo (sem IDF).** No fallback OR do modo lexical
+  puro, termos frequentes ("conta", "cliente") dominam o ranking — é o que derrubou a híbrida
+  antes da correção de §10 e o que mantém o modo `lexical` fraco em paráfrases (recall 0.17).
+  BM25 via extensão (`pg_search`) resolveria; adiado até um acervo em que a semântica não baste.
+- **Subseções curtas herdam o rótulo da seção-mãe.** Chunks fundidos por tamanho mínimo citam a
+  seção maior ("2" em vez de "2.2"). A citação continua correta, só menos precisa.
+- **Conjunto de avaliação pequeno (20 perguntas).** Os limiares têm margem de 0.01 no pior caso;
+  são configuração, não código, e devem ser recalibrados a cada troca de modelo ou de acervo.
 - **Estimativa de tokens é aproximada** (3,9 caracteres/token). Conservadora por desenho; o ponto
   de ajuste é único (`tokens.py`).
 - **Rate limiting em memória.** Correto para uma instância; com mais de uma, o teto efetivo se

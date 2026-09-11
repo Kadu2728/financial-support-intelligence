@@ -159,9 +159,10 @@ class Settings(BaseSettings):
     # por que. Em producao a chave e obrigatoria — validador abaixo.
     gemini_api_key: SecretStr = SecretStr("")
     gemini_embedding_model: str = "gemini-embedding-001"
-    gemini_generation_model: str = "gemini-2.5-flash"
+    gemini_generation_model: str = "gemini-3.6-flash"
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    gemini_timeout_seconds: float = 30.0
+    # 60 s: sob carga o Flash leva 20-30 s para gerar; 30 s cortava respostas boas.
+    gemini_timeout_seconds: float = 60.0
     # Lotes de 64 textos por chamada de embedding (docs/rag-design.md §1).
     gemini_embedding_batch_size: int = 64
 
@@ -192,8 +193,11 @@ class Settings(BaseSettings):
 
     # Gate de evidencia. Em configuracao, nao em codigo: recalibrar nao pode exigir
     # deploy (ADR-0008).
-    rag_min_top_score: float = 0.55
-    rag_min_support_score: float = 0.45
+    # Calibrados em 2026-09-11 sobre demo/perguntas-avaliacao.json com
+    # gemini-embedding-001 (docs/rag-design.md §10). O cosine desse modelo e
+    # comprimido: fora do acervo fica em 0.57-0.67, dentro em 0.66-0.77.
+    rag_min_top_score: float = 0.66
+    rag_min_support_score: float = 0.64
     rag_min_support_count: int = 2
     rag_context_token_budget: int = 6000
     rag_generation_temperature: float = 0.2

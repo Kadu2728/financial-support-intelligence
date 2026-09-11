@@ -75,3 +75,19 @@ linguagem natural.
 
 **Reranking com cross-encoder.** Adiado, não rejeitado. Melhoraria a precisão do top-8, mas adiciona
 latência e outra dependência de modelo. Registrado como evolução em `architecture.md` §12.
+
+## Revisão após medição (2026-09-11)
+
+A avaliação da Fase 6 (`docs/rag-design.md` §10) contradisse parte do contexto acima: no acervo
+de demonstração, a perna semântica sozinha alcançou recall 1.00 nas consultas literais — o
+`gemini-embedding-001` representa bem códigos que aparecem literalmente no chunk. E a perna
+lexical sobre a pergunta inteira **piorou** a híbrida (paráfrase: 0.83 → 0.33), porque o AND
+estrito nunca casava e o fallback OR injetava ruído que o RRF não sabe descontar.
+
+A decisão se mantém, com um refinamento: **a perna lexical entra na fusão apenas com termos
+exatos** (tokens com dígito, siglas, frases entre aspas), casados com AND. Sem termo exato, a
+híbrida degenera para a semântica — que é o comportamento certo quando a lexical não tem nada
+preciso a dizer. RRF continua sendo a fusão; o que mudou é *o que* a perna lexical traz para ela.
+
+O que não mudou: o índice, o schema, a coluna `tsv` e o modo `lexical` puro (útil sem chave do
+Gemini e como diagnóstico).

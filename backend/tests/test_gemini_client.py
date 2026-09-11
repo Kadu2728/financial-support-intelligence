@@ -275,7 +275,7 @@ async def test_generate_json_envia_schema_sem_tools(settings: Settings) -> None:
     assert resultado.text == '{"answer": "ok"}'
     assert resultado.prompt_tokens == 120
     assert resultado.completion_tokens == 8
-    assert resultado.model == "gemini-2.5-flash"
+    assert resultado.model == "gemini-3.6-flash"
 
 
 async def test_generate_sem_candidato_expoe_motivo_do_bloqueio(settings: Settings) -> None:

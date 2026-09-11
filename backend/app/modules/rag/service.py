@@ -53,7 +53,11 @@ RECUSA_CANONICA = (
     "um documento sobre o tema que ainda nao foi adicionado ao acervo."
 )
 
-_MARCADOR_CITACAO = re.compile(r"\[(C\d+)\]")
+# "[C1]", "[C1, C3]", "[C1-a8f3e2]": o modelo varia a forma; a validacao normaliza.
+_GRUPO_CITACAO = re.compile(
+    r"\[\s*(C\d+(?:-[0-9A-Za-z]+)?(?:\s*[,;]\s*C\d+(?:-[0-9A-Za-z]+)?)*)\s*\]"
+)
+_ID_CITACAO = re.compile(r"C\d+(?:-[0-9A-Za-z]+)?")
 
 
 class GenerationFailedError(AppError):
@@ -381,12 +385,32 @@ def validar_citacoes(
     conhecidos = contexto.identificadores
     por_id = {b.identificador: b.hit for b in contexto.blocos}
 
-    no_texto = _MARCADOR_CITACAO.findall(modelo.answer)
-    na_lista = [c.strip().upper() for c in modelo.citations if c and c.strip()]
+    def _normalizar(bruto: str) -> str | None:
+        """ "C1-a8f3e2" -> "C1" quando o sufixo e o desta requisicao.
+
+        O modelo as vezes copia o sufixo da tag para a citacao; como o sufixo e
+        nosso, o identificador continua inequivoco. Sufixo DIFERENTE e invencao e
+        fica registrado como veio. Devolve None para o que nem parece um id.
+        """
+        base, _, sufixo = bruto.strip().upper().partition("-")
+        if not re.fullmatch(r"C\d+", base):
+            return None
+        if sufixo and sufixo.lower() != contexto.sufixo.lower():
+            return f"{base}-{sufixo}"
+        return base
+
+    no_texto = [
+        _normalizar(ident)
+        for grupo in _GRUPO_CITACAO.findall(modelo.answer)
+        for ident in _ID_CITACAO.findall(grupo)
+    ]
+    na_lista = [_normalizar(c) for c in modelo.citations if c and c.strip()]
 
     ordem: list[str] = []
     invalidas: list[str] = []
     for identificador in [*no_texto, *na_lista]:
+        if identificador is None:
+            continue
         if identificador in conhecidos:
             if identificador not in ordem:
                 ordem.append(identificador)
@@ -399,10 +423,15 @@ def validar_citacoes(
     renumeracao = {antigo: f"C{novo + 1}" for novo, antigo in enumerate(ordem)}
 
     def _substituir(m: re.Match[str]) -> str:
-        novo = renumeracao.get(m.group(1))
-        return f"[{novo}]" if novo else ""  # invalida: removida
+        novos: list[str] = []
+        for ident in _ID_CITACAO.findall(m.group(1)):
+            normalizado = _normalizar(ident)
+            novo = renumeracao.get(normalizado) if normalizado else None
+            if novo and novo not in novos:
+                novos.append(novo)
+        return f"[{', '.join(novos)}]" if novos else ""  # invalida: removida
 
-    texto = _MARCADOR_CITACAO.sub(_substituir, modelo.answer)
+    texto = _GRUPO_CITACAO.sub(_substituir, modelo.answer)
     texto = re.sub(r"[ \t]+([.,;:!?])", r"\1", texto)  # "prazo [C9]." -> "prazo."
     texto = re.sub(r"[ \t]{2,}", " ", texto).strip()
 

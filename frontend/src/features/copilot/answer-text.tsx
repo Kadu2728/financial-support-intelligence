@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils";
  * enviados por terceiros. Este renderizador so produz os nos que conhece.
  */
 
-const MARCADOR = /\[(C\d+)\]/g;
+// "[C1]" ou "[C1, C3]": o backend normaliza os grupos, cada id vira um chip.
+const MARCADOR = /\[\s*(C\d+(?:\s*,\s*C\d+)*)\s*\]/g;
 const NEGRITO = /\*\*(.+?)\*\*/g;
 
 interface Props {
@@ -77,8 +78,9 @@ function Inline({
     if (inicio > ultimo) {
       partes.push(<Fragment key={chave++}>{comNegrito(texto.slice(ultimo, inicio))}</Fragment>);
     }
-    const id = match[1] ?? "";
-    if (conhecidas.has(id)) {
+    const ids = (match[1] ?? "").split(",").map((s) => s.trim());
+    for (const id of ids) {
+      if (!conhecidas.has(id)) continue;
       partes.push(
         <button
           key={chave++}

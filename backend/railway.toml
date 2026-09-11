@@ -1,0 +1,14 @@
+# Railway le este arquivo na raiz do servico (root directory: backend).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health/ready"
+healthcheckTimeout = 60
+# Uma instancia so, de proposito: o rate limiter e em memoria e o worker de
+# ingestao roda embutido (ADR-0004). Escalar horizontalmente exige Redis para o
+# limiter — decisao adiada ate existir demanda.
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

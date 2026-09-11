@@ -166,3 +166,28 @@ Métricas: recall@8, MRR, taxa de recusa correta e taxa de recusa indevida (fals
 
 Os três modos (`semantic`, `lexical`, `hybrid`) são medidos no mesmo conjunto. O resultado é
 registrado neste documento — a afirmação "busca híbrida é melhor" precisa de número, não de intuição.
+
+Ferramenta: `scripts/avaliar_busca.py` (exige `GEMINI_API_KEY` e o acervo indexado).
+
+### Resultados
+
+> **Pendente.** A avaliação exige a chave do Gemini para embeddar as perguntas e o acervo. Os testes
+> de integração validam a mecânica da busca com embeddings falsos (hashing de palavras), o que não
+> mede qualidade semântica. Preencher esta tabela após a primeira execução do script:
+
+| Modo | Literal (5) | Paráfrase (6) | Multi-seção (5) | Fora do acervo (5) |
+|---|---|---|---|---|
+| semantic | recall@8 — · MRR — | — | — | recusas —/5 |
+| lexical | — | — | — | — |
+| hybrid | — | — | — | — |
+
+## 11. Limitações conhecidas
+
+- **`ts_rank_cd` não pondera por raridade do termo (sem IDF).** No fallback OR da perna lexical,
+  termos frequentes ("conta", "cliente") podem dominar o ranking. A perna semântica compensa na
+  fusão; em modo puramente lexical o efeito é visível. Alternativa futura: `ts_rank` com pesos por
+  posição ou BM25 via extensão (`pg_search`), ambas adiadas até haver medição que justifique.
+- **Estimativa de tokens é aproximada** (3,9 caracteres/token). Conservadora por desenho; o ponto
+  de ajuste é único (`tokens.py`).
+- **Rate limiting em memória.** Correto para uma instância; com mais de uma, o teto efetivo se
+  multiplica. Trocar por Redis é a única mudança necessária para escalar horizontalmente.

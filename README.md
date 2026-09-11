@@ -203,7 +203,29 @@ cd backend && DATABASE_URL="postgresql://...-pooler.../db" .venv/Scripts/python 
 Eles cobrem o que um repositório em memória não alcança: que o DDL executa, que os índices existem,
 e o comportamento **transacional** — a detecção de reuso de refresh token escreve e depois levanta
 exceção, então sem um commit explícito a revogação seria desfeita pelo rollback. Um fake passa nos
-dois casos; só um banco de verdade distingue.
+dois casos; só um banco de verdade distingue. O mesmo bug reapareceu na Fase 7 (consulta `FAILED`
+perdida no rollback) e tem o mesmo teste de mutação.
+
+Os testes de ingestão, busca e RAG rodam com um **Gemini falso** (embeddings por hashing de
+palavras): validam a mecânica — transações, `is_current`, fusão, gate, citações — e não a qualidade
+semântica. Essa só a avaliação com chave real mede.
+
+### Indexar o acervo e avaliar o retrieval
+
+Com `GEMINI_API_KEY` em `backend/.env`:
+
+```bash
+cd backend && .venv/Scripts/python -m app.cli process-queue
+```
+
+```bash
+backend/.venv/Scripts/python scripts/avaliar_busca.py
+```
+
+O script roda as 20 perguntas de [`demo/perguntas-avaliacao.json`](demo/perguntas-avaliacao.json)
+nos três modos e imprime recall@8, MRR e taxa de recusa por classe — a evidência por trás de
+"busca híbrida é melhor" e o insumo para calibrar os limiares do gate. Trocou o modelo de
+embedding? `python -m app.cli reindex-stale` re-enfileira o que foi indexado pelo modelo anterior.
 
 ---
 
@@ -222,10 +244,13 @@ completa e versionada; `.env` e `.env.local` nunca vão para o repositório.
 | `DATABASE_URL` | 2 | Connection string do Neon — usar a variante **pooled** |
 | `JWT_SECRET_KEY` | 3 | Segredo de assinatura dos tokens |
 | `STORAGE_BACKEND` / `S3_*` | 4 | Backend de arquivos (`local` ou `s3`; produção exige `pip install -e '.[s3]'`) |
-| `GEMINI_API_KEY` | 5 | Chave da API do Gemini — **somente no backend** |
-| `GEMINI_EMBEDDING_MODEL` / `_DIM` | 5 | Modelo e dimensão dos embeddings |
-| `GEMINI_GENERATION_MODEL` | 7 | Modelo de geração |
-| `RAG_MIN_TOP_SCORE` e afins | 7 | Limiares do gate de evidência (calibrados na Fase 6) |
+| `GEMINI_API_KEY` | 5 | Chave da API do Gemini — **somente no backend**. Sem ela a API sobe, mas worker e copilot ficam desligados (o frontend avisa) |
+| `GEMINI_EMBEDDING_MODEL` / `GEMINI_GENERATION_MODEL` | 5, 7 | Modelos de embedding (768 dims, L2) e de geração |
+| `WORKER_ENABLED` / `WORKER_POLL_INTERVAL_SECONDS` | 5 | Worker de ingestão embutido na API |
+| `SEARCH_CANDIDATES_PER_LEG` / `SEARCH_TOP_K` / `SEARCH_RRF_K` | 6 | Parâmetros da busca híbrida |
+| `RAG_MIN_TOP_SCORE` / `RAG_MIN_SUPPORT_SCORE` / `RAG_MIN_SUPPORT_COUNT` | 7 | Gate de evidência — calibrar com `scripts/avaliar_busca.py` |
+| `RAG_CONTEXT_TOKEN_BUDGET` | 7 | Orçamento de contexto enviado ao modelo |
+| `RATE_LIMIT_COPILOT_PER_MINUTE` | 10 | Perguntas por usuário por minuto (em memória, uma instância) |
 
 **Frontend** (`frontend/.env.local`)
 
@@ -248,7 +273,23 @@ completa e versionada; `.env` e `.env.local` nunca vão para o repositório.
 | Banco | Neon | Habilitar `vector`, `pg_trgm` e `citext` |
 | Arquivos | Cloudflare R2 | Bucket privado, acesso por chave S3 |
 
-Detalhes na Fase 11.
+Arquivos prontos: [`backend/Dockerfile`](backend/Dockerfile) (multi-stage, usuário sem privilégio,
+`alembic upgrade head` antes de subir), [`backend/railway.toml`](backend/railway.toml) (healthcheck
+em `/health/ready`, uma réplica) e [`frontend/vercel.json`](frontend/vercel.json).
+
+Passos:
+
+1. **Neon** — criar o projeto, copiar a connection string *pooled*.
+2. **Railway** — novo serviço a partir do repositório com root directory `backend`. Variáveis:
+   `APP_ENV=production`, `DATABASE_URL`, `JWT_SECRET_KEY` (48+ bytes), `GEMINI_API_KEY`,
+   `STORAGE_BACKEND=s3` e as `S3_*` do R2, `CORS_ORIGINS` com o domínio do Vercel.
+   Em produção a aplicação **recusa subir** sem segredo forte e sem a chave do Gemini.
+3. **Vercel** — projeto com root directory `frontend`. Variável `BACKEND_URL` apontando para o
+   Railway (sem `NEXT_PUBLIC_`).
+4. Criar o primeiro administrador: `railway run python -m app.cli create-admin --email ... --name ...`.
+
+Uma instância só, de propósito: o rate limiter é em memória e o worker roda embutido. Escalar
+horizontalmente é uma decisão futura que exige Redis para o limiter — e nada mais.
 
 ---
 
@@ -267,6 +308,7 @@ consequências (inclusive as negativas) e alternativas descartadas:
 | [0006](docs/adr/0006-role-como-enum.md) | Papel como ENUM, não como tabela de domínio |
 | [0007](docs/adr/0007-abstracao-de-storage.md) | Abstração de storage com backend S3-compatible |
 | [0008](docs/adr/0008-controle-de-hallucination.md) | Controle de hallucination em cinco camadas |
+| [0009](docs/adr/0009-cliente-gemini-http-direto.md) | Cliente Gemini por HTTP direto, sem SDK |
 
 ## Roadmap
 
@@ -275,10 +317,12 @@ consequências (inclusive as negativas) e alternativas descartadas:
 - [x] **Fase 2** — Banco de dados e migrations
 - [x] **Fase 3** — Autenticação e autorização
 - [x] **Fase 4** — Sistema de documentos
-- [ ] **Fase 5** — Extração, chunking e embeddings
-- [ ] **Fase 6** — Busca semântica e híbrida
-- [ ] **Fase 7** — RAG e integração com Gemini
-- [ ] **Fase 8** — Citações, histórico e feedback
-- [ ] **Fase 9** — Dashboard e Support Intelligence
-- [ ] **Fase 10** — Testes, segurança e observabilidade
-- [ ] **Fase 11** — Polimento e deploy
+- [x] **Fase 5** — Extração, chunking e embeddings
+- [x] **Fase 6** — Busca semântica e híbrida
+- [x] **Fase 7** — RAG e integração com Gemini
+- [x] **Fase 8** — Citações, histórico e feedback
+- [x] **Fase 9** — Dashboard e Support Intelligence
+- [x] **Fase 10** — Rate limiting, hardening e observabilidade
+- [ ] **Fase 11** — Deploy (arquivos prontos; exige contas Vercel/Railway/R2)
+- [ ] **Calibração** — rodar `scripts/avaliar_busca.py` com a chave do Gemini e registrar os
+  números em `docs/rag-design.md` §10

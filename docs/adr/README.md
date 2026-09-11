@@ -17,6 +17,7 @@ histórico permanece.
 | [0006](./0006-role-como-enum.md) | Papel como ENUM, não como tabela de domínio | Aceito |
 | [0007](./0007-abstracao-de-storage.md) | Abstração de storage com backend S3-compatible | Aceito |
 | [0008](./0008-controle-de-hallucination.md) | Controle de hallucination em cinco camadas | Aceito |
+| [0009](./0009-cliente-gemini-http-direto.md) | Cliente Gemini por HTTP direto, sem SDK | Aceito |
 
 ## Quando escrever um ADR
 

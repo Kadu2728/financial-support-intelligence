@@ -462,7 +462,7 @@ async def test_claim_reivindica_um_job_por_vez(
 ) -> None:
     """`FOR UPDATE SKIP LOCKED` e o que faz a fila funcionar com varios workers."""
     async with session_factory() as session:
-        await build_service(session, storage).create_document(
+        _, versao = await build_service(session, storage).create_document(
             title=f"Para a fila {uuid.uuid4().hex[:8]}",
             description=None,
             category=None,
@@ -471,9 +471,12 @@ async def test_claim_reivindica_um_job_por_vez(
             uploaded_by=admin,
         )
         await session.commit()
+        version_id = versao.id
 
     async with session_factory() as session:
-        job = await ProcessingJobRepository(session).claim()
+        # Restrito a propria versao: o banco e compartilhado com o acervo real, e
+        # um claim irrestrito tomaria (e deixaria RUNNING) um job de verdade.
+        job = await ProcessingJobRepository(session).claim(version_ids={version_id})
         assert job is not None
         assert job.status is JobStatus.RUNNING
         assert job.attempts == 1

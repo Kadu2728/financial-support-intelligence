@@ -27,7 +27,7 @@ next-env.d.ts
 !.env.example
 
 # Uploads locais (dev)
-storage/
+/backend/storage/
 uploads/
 
 # OS / editor

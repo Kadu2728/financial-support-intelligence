@@ -1,5 +1,8 @@
 # Financial Support Intelligence
 
+> **Em produção:** https://financial-support-intelligence.vercel.app · backend em https://fsi-backend-3bs6.onrender.com/health/ready
+> (plano gratuito: a primeira requisição após 15 min de inatividade leva ~1 min)
+
 Plataforma interna de inteligência operacional para equipes de suporte de instituições financeiras.
 Analistas perguntam em linguagem natural sobre políticas, procedimentos e manuais internos, e
 recebem respostas fundamentadas **com as fontes exatas** — documento, seção e trecho utilizado.

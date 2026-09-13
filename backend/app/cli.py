@@ -73,7 +73,7 @@ async def _process_queue() -> int:
     """Esvazia a fila de ingestao e sai. Util em dev e para indexar um acervo inicial
     sem esperar o polling do worker embutido na API."""
     from app.integrations.gemini.client import GeminiClient
-    from app.modules.documents.router import get_storage
+    from app.integrations.storage.factory import build_storage
     from app.modules.ingestion.worker import IngestionWorker
 
     settings = get_settings()
@@ -82,12 +82,13 @@ async def _process_queue() -> int:
         return 1
 
     engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
     gemini = GeminiClient(settings)
     try:
         worker = IngestionWorker(
             settings=settings,
-            session_factory=create_session_factory(engine),
-            storage=get_storage(settings),
+            session_factory=session_factory,
+            storage=build_storage(settings, session_factory),
             embeddings=gemini,
         )
         await worker.recover_stale()

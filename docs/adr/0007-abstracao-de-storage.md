@@ -72,3 +72,23 @@ Rejeitado.
 **Volume persistente do Railway.** Resolveria a efemeridade sem serviço externo. Rejeitado: prende o
 projeto a uma plataforma específica, complica a execução local e não oferece o modelo de acesso que
 uma futura URL assinada exigiria.
+
+## Revisão (2026-09-13): backend `db` como terceira implementação
+
+O contexto de deploy mudou: o backend foi para o plano gratuito do Render, que **não tem disco
+persistente**, e adicionar uma terceira conta (Cloudflare, para o R2) não se justificava para um
+acervo de demonstração de ~100 KB. A alternativa "BYTEA no PostgreSQL", rejeitada acima para o
+caso geral, é exatamente a certa para este caso particular — e os motivos da rejeição continuam
+válidos em escala.
+
+Foi adicionado `DbStorage` (`app/integrations/storage/db.py`, tabela `stored_files`), selecionado
+por `STORAGE_BACKEND=db`. Semântica idêntica à de um object store: `put` é durável ao retornar,
+em transação própria; sobrescrever substitui; `get` de chave inexistente levanta `ObjectNotFound`.
+
+O que esta revisão **confirma** da decisão original: o valor da abstração é poder trocar o backend
+por variável de ambiente, sem tocar em `DocumentService`, worker ou CLI. O `db` entrou com ~80
+linhas e dois testes de integração, e nenhum outro módulo mudou.
+
+Limite declarado: adequado até dezenas de MB. Acima disso — ou quando existir mais de uma
+instância, CDN ou URL assinada — o backend `s3` (R2) continua sendo a resposta, e a migração é
+copiar as linhas de `stored_files` para o bucket e trocar a variável.

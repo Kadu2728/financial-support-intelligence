@@ -4,12 +4,12 @@ import uuid
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.core.dependencies import SessionDep, SettingsDep
 from app.integrations.storage.base import StorageBackend
-from app.integrations.storage.local import LocalStorage
+from app.integrations.storage.factory import build_storage
 from app.modules.auth.dependencies import CurrentUser, RequireAdmin
 from app.modules.documents.models import DocumentStatus
 from app.modules.documents.repository import (
@@ -30,15 +30,9 @@ from app.modules.ingestion.repository import ProcessingJobRepository
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-def get_storage(settings: SettingsDep) -> StorageBackend:
+def get_storage(settings: SettingsDep, request: Request) -> StorageBackend:
     """Backend de armazenamento conforme a configuracao (ADR-0007)."""
-    from app.core.config import StorageKind
-
-    if settings.storage_backend is StorageKind.S3:
-        from app.integrations.storage.s3 import S3Storage
-
-        return S3Storage(settings)
-    return LocalStorage(settings.storage_local_path)
+    return build_storage(settings, request.app.state.session_factory)
 
 
 def get_document_service(

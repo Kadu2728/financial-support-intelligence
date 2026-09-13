@@ -30,6 +30,9 @@ _OPCOES_LIBPQ = frozenset(
 class StorageKind(StrEnum):
     LOCAL = "local"
     S3 = "s3"
+    # Arquivos em BYTEA no proprio Postgres. Para runtimes sem disco persistente e
+    # acervos pequenos (ADR-0007, revisao); acima de centenas de MB, usar S3.
+    DB = "db"
 
 
 class Environment(StrEnum):
@@ -130,8 +133,9 @@ class Settings(BaseSettings):
         return value
 
     # --- Storage de arquivos -----------------------------------------------
-    # `local` grava em disco e serve apenas para desenvolvimento: o filesystem do
-    # Railway e efemero e todo redeploy apagaria o acervo (ADR-0007).
+    # `local` grava em disco e serve apenas para desenvolvimento: o filesystem das
+    # plataformas de container e efemero e todo redeploy apagaria o acervo
+    # (ADR-0007). Em producao: `s3` (R2) ou `db` (no proprio Postgres).
     storage_backend: StorageKind = StorageKind.LOCAL
     storage_local_path: Path = _BACKEND_ROOT / "storage"
 

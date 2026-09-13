@@ -1,0 +1,31 @@
+# Blueprint do Render (infraestrutura como codigo). O servico de producao foi criado
+# com o CLI a partir desta mesma configuracao; o arquivo documenta e permite recriar.
+#
+# Plano gratuito: sem disco persistente (por isso STORAGE_BACKEND=db, ADR-0007) e o
+# servico dorme apos 15 min sem trafego — a primeira requisicao depois disso leva
+# ~1 min. Regiao virginia: a mais proxima do Neon em sa-east-1 (Render nao tem
+# regiao no Brasil).
+services:
+  - type: web
+    name: fsi-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: virginia
+    healthCheckPath: /health/ready
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_JSON
+        value: "true"
+      - key: STORAGE_BACKEND
+        value: db
+      - key: CORS_ORIGINS
+        value: https://financial-support-intelligence.vercel.app
+      - key: DATABASE_URL
+        sync: false # connection string POOLED do Neon (banco fsi_prod)
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false

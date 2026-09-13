@@ -20,8 +20,8 @@ from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.db.session import create_engine, create_session_factory
+from app.integrations.storage.factory import build_storage
 from app.modules.auth.router import router as auth_router
-from app.modules.documents.router import get_storage
 from app.modules.documents.router import router as documents_router
 from app.modules.feedback.router import router as feedback_router
 from app.modules.ingestion.worker import IngestionWorker
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         worker = IngestionWorker(
             settings=settings,
             session_factory=app.state.session_factory,
-            storage=get_storage(settings),
+            storage=build_storage(settings, app.state.session_factory),
             embeddings=app.state.gemini,
         )
         tarefa_worker = asyncio.create_task(worker.run_forever(parar_worker), name="ingestion")

@@ -247,7 +247,7 @@ completa e versionada; `.env` e `.env.local` nunca vão para o repositório.
 | `CORS_ORIGINS` | 1 | Origens permitidas, separadas por vírgula |
 | `DATABASE_URL` | 2 | Connection string do Neon — usar a variante **pooled** |
 | `JWT_SECRET_KEY` | 3 | Segredo de assinatura dos tokens |
-| `STORAGE_BACKEND` / `S3_*` | 4 | Backend de arquivos (`local` ou `s3`; produção exige `pip install -e '.[s3]'`) |
+| `STORAGE_BACKEND` / `S3_*` | 4 | Backend de arquivos: `local` (dev), `db` (no Postgres — acervos pequenos, sem disco) ou `s3` (R2; exige `pip install -e '.[s3]'`) |
 | `GEMINI_API_KEY` | 5 | Chave da API do Gemini — **somente no backend**. Sem ela a API sobe, mas worker e copilot ficam desligados (o frontend avisa) |
 | `GEMINI_EMBEDDING_MODEL` / `GEMINI_GENERATION_MODEL` | 5, 7 | Modelos de embedding (768 dims, L2) e de geração |
 | `WORKER_ENABLED` / `WORKER_POLL_INTERVAL_SECONDS` | 5 | Worker de ingestão embutido na API |
@@ -270,27 +270,36 @@ completa e versionada; `.env` e `.env.local` nunca vão para o repositório.
 
 ## Deploy
 
+Em produção: **https://financial-support-intelligence.vercel.app**
+
 | Serviço | Plataforma | Observação |
 |---|---|---|
-| Frontend | Vercel | Root directory: `frontend` |
-| Backend | Railway | Root directory: `backend`, start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
-| Banco | Neon | Habilitar `vector`, `pg_trgm` e `citext` |
-| Arquivos | Cloudflare R2 | Bucket privado, acesso por chave S3 |
+| Frontend | Vercel (região `gru1`) | Root directory `frontend`; deploy automático a cada push em `main` |
+| Backend | Render, plano gratuito (`virginia`) | Docker a partir de [`backend/Dockerfile`](backend/Dockerfile); `alembic upgrade head` antes de subir |
+| Banco | Neon (`sa-east-1`) | Banco `fsi_prod`, separado do de desenvolvimento; `vector`, `pg_trgm`, `citext` |
+| Arquivos | PostgreSQL (`STORAGE_BACKEND=db`) | Sem disco no plano gratuito do Render; R2 é a opção de escala ([ADR-0007](docs/adr/0007-abstracao-de-storage.md), revisão) |
 
-Arquivos prontos: [`backend/Dockerfile`](backend/Dockerfile) (multi-stage, usuário sem privilégio,
-`alembic upgrade head` antes de subir), [`backend/railway.toml`](backend/railway.toml) (healthcheck
-em `/health/ready`, uma réplica) e [`frontend/vercel.json`](frontend/vercel.json).
+Infraestrutura como código: [`render.yaml`](render.yaml) e [`frontend/vercel.json`](frontend/vercel.json).
+[`backend/railway.toml`](backend/railway.toml) permanece para quem preferir o Railway (plano pago),
+com volume persistente no lugar do backend `db`.
 
-Passos:
+**Limitação honesta do plano gratuito:** o backend dorme após 15 minutos sem tráfego e leva
+cerca de um minuto para acordar. A tela de login mostra o estado do serviço; se aparecer
+"fora", aguarde e recarregue.
 
-1. **Neon** — criar o projeto, copiar a connection string *pooled*.
-2. **Railway** — novo serviço a partir do repositório com root directory `backend`. Variáveis:
-   `APP_ENV=production`, `DATABASE_URL`, `JWT_SECRET_KEY` (48+ bytes), `GEMINI_API_KEY`,
-   `STORAGE_BACKEND=s3` e as `S3_*` do R2, `CORS_ORIGINS` com o domínio do Vercel.
-   Em produção a aplicação **recusa subir** sem segredo forte e sem a chave do Gemini.
-3. **Vercel** — projeto com root directory `frontend`. Variável `BACKEND_URL` apontando para o
-   Railway (sem `NEXT_PUBLIC_`).
-4. Criar o primeiro administrador: `railway run python -m app.cli create-admin --email ... --name ...`.
+Passos para recriar:
+
+1. **Neon** — projeto (ou banco) novo; copiar a connection string *pooled*.
+2. **Render** — `render services create` com os valores de [`render.yaml`](render.yaml), ou
+   *New → Blueprint* no painel apontando para este repositório. Variáveis: `DATABASE_URL`,
+   `JWT_SECRET_KEY` (48+ bytes), `GEMINI_API_KEY`, `STORAGE_BACKEND=db`, `CORS_ORIGINS` com o
+   domínio do Vercel. Em produção a aplicação **recusa subir** sem segredo forte e sem a chave.
+3. **Vercel** — projeto com root directory `frontend`; variável `BACKEND_URL` apontando para o
+   Render (sem `NEXT_PUBLIC_`).
+4. **Primeiro administrador** — `python -m app.cli create-admin --email ... --name ...` no shell
+   do serviço (`render ssh`) ou localmente com `DATABASE_URL` de produção.
+5. **Acervo** — enviar os documentos pela tela *Documentos*; o worker embutido indexa cada um
+   em segundos.
 
 Uma instância só, de propósito: o rate limiter é em memória e o worker roda embutido. Escalar
 horizontalmente é uma decisão futura que exige Redis para o limiter — e nada mais.

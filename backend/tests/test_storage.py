@@ -123,3 +123,20 @@ async def test_subdiretorios_sao_criados(storage: LocalStorage) -> None:
     await storage.put("a/b/c/d/e.pdf", b"x", content_type="application/pdf")
 
     assert await storage.exists("a/b/c/d/e.pdf")
+
+
+# --- Factory ---------------------------------------------------------------
+
+
+def test_factory_escolhe_o_backend_pela_configuracao() -> None:
+    from unittest.mock import MagicMock
+
+    from app.core.config import Settings
+    from app.integrations.storage.db import DbStorage
+    from app.integrations.storage.factory import build_storage
+
+    base = {"jwt_secret_key": "segredo-de-teste-com-tamanho-suficiente"}
+    fabrica = MagicMock()
+
+    assert isinstance(build_storage(Settings(**base), fabrica), LocalStorage)
+    assert isinstance(build_storage(Settings(storage_backend="db", **base), fabrica), DbStorage)

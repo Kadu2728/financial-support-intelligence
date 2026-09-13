@@ -9,6 +9,7 @@ Importar aqui e resolver de uma vez: `alembic/env.py` importa apenas este arquiv
 """
 
 from app.db.base import Base
+from app.integrations.storage.db import StoredFile
 from app.modules.auth.models import RefreshToken
 from app.modules.documents.models import Document, DocumentChunk, DocumentVersion
 from app.modules.feedback.models import Feedback
@@ -27,5 +28,6 @@ __all__ = [
     "ProcessingJob",
     "Query",
     "RefreshToken",
+    "StoredFile",
     "User",
 ]

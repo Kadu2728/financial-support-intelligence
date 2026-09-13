@@ -69,3 +69,21 @@ def test_limiar_alto_nao_agrupa_perguntas_diferentes() -> None:
         lacuna("quantos funcionarios o banco tem", minutos_atras=2),
     ]
     assert len(agrupar_lacunas(lacunas, limiar=0.8)) == 2
+
+
+def test_pergunta_identica_repetida_conta_mas_nao_vira_exemplo() -> None:
+    """Visto na tela: "2x pergunta X — Tambem: pergunta X". A repeticao ja esta na
+    contagem; como exemplo, e ruido."""
+    lacunas = [
+        lacuna("Qual o procedimento para abertura de conta de pessoa juridica?", minutos_atras=1),
+        lacuna("qual o procedimento para abertura de conta de pessoa juridica", minutos_atras=2),
+        lacuna(
+            "Como abrir conta PJ?",
+            minutos_atras=3,
+            embedding=embed_fake("abertura conta juridica procedimento"),
+        ),
+    ]
+    grupos = agrupar_lacunas(lacunas, limiar=0.3)
+
+    assert grupos[0].ocorrencias == 3
+    assert grupos[0].exemplos == ["Como abrir conta PJ?"]

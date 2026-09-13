@@ -118,10 +118,10 @@ atributo permitem que o modelo referencie a seção naturalmente no texto da res
 
 | Parâmetro | Valor |
 |---|---|
-| Modelo | env `GEMINI_GENERATION_MODEL`, classe Flash |
+| Modelo | env `GEMINI_GENERATION_MODEL`, padrão `gemini-3.8-flash` — ver latências abaixo |
 | Temperatura | 0.2 — resposta factual, não criativa |
 | Formato | JSON mode com schema fixo |
-| Timeout | 60 s, com erro explícito na UI — sob carga o Flash leva 20–30 s |
+| Timeout | 60 s, com erro explícito na UI — sob carga um Flash pode levar 20–50 s |
 
 ```json
 { "answer": "string",
@@ -129,6 +129,18 @@ atributo permitem que o modelo referencie a seção naturalmente no texto da res
   "confidence": 0.0,
   "insufficient_evidence": false }
 ```
+
+**Escolha do modelo (medida em 2026-09-11, mesmo prompt de ~470 tokens, JSON mode):**
+
+| Modelo | Latência | Observação |
+|---|---|---|
+| `gemini-2.5-flash` | — | Aposentado para novos projetos (404 na API) |
+| `gemini-3.6-flash` | 54 s | Retornou 503 "high demand" em 3 de 5 chamadas; retry com backoff salvou, mas 30–50 s por resposta é inaceitável na tela |
+| **`gemini-3.8-flash`** | **1,9 s** | Mesma qualidade de resposta nas perguntas de avaliação; padrão atual |
+| `gemini-3.5-flash-lite` | 1,0 s | Alternativa se custo importar mais que qualidade |
+
+A latência do `3.6` era demanda do serviço, não do prompt: o mesmo payload no `3.8` respondeu em
+2 s. O modelo é configuração — trocar não exige deploy.
 
 ## 8. Defesa contra prompt injection
 

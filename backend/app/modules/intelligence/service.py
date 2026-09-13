@@ -168,7 +168,9 @@ def agrupar_lacunas(
         GrupoLacuna(
             representante=representante.question,
             ocorrencias=len(membros),
-            exemplos=[m.question for m in membros[1:4]],
+            # So formulacoes DIFERENTES da representante: a mesma pergunta repetida
+            # ja esta contada em `ocorrencias`, e repeti-la como "tambem" e ruido.
+            exemplos=_formulacoes_distintas(representante.question, membros)[:3],
             ultima_em=representante.created_at,
             query_ids=[str(m.query_id) for m in membros],
         )
@@ -185,3 +187,19 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return produto / (na * nb) if na and nb else 0.0
+
+
+def _formulacoes_distintas(representante: str, membros: list[Lacuna]) -> list[str]:
+    vistas = {_normalizar_pergunta(representante)}
+    saida: list[str] = []
+    for membro in membros:
+        chave = _normalizar_pergunta(membro.question)
+        if chave in vistas:
+            continue
+        vistas.add(chave)
+        saida.append(membro.question)
+    return saida
+
+
+def _normalizar_pergunta(texto: str) -> str:
+    return " ".join(texto.lower().split()).rstrip("?!. ")

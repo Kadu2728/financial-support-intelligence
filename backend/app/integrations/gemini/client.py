@@ -60,6 +60,12 @@ class GeminiError(AppError):
     code = ErrorCode.UPSTREAM_UNAVAILABLE
     message = "O servico de IA nao respondeu."
 
+    # True quando o erro veio de esgotar tentativas em condicao transitoria
+    # (429, 5xx, timeout, rede). E o que autoriza cair para o modelo reserva: uma
+    # chave invalida ou um schema rejeitado (400/403) falharia igual em qualquer
+    # modelo, e trocar so atrasaria o erro.
+    retryable: bool = False
+
 
 class GeminiNotConfiguredError(GeminiError):
     status_code = 503
@@ -112,6 +118,9 @@ class GenerationClient(Protocol):
 
 _RETENTAVEIS = frozenset({429, 500, 502, 503, 504})
 _MAX_TENTATIVAS = 4
+# Com modelo reserva configurado, o principal recebe menos tentativas: cada 503 de
+# "high demand" leva ~20 s para chegar, e o reserva costuma responder em segundos.
+_TENTATIVAS_ANTES_DA_RESERVA = 2
 _BACKOFF_BASE_S = 1.0
 
 
@@ -207,7 +216,41 @@ class GeminiClient:
             # Nenhuma tool: sem tools, uma injecao de prompt no conteudo recuperado
             # nao tem para onde escalar (docs/rag-design.md §8).
         }
-        dados = await self._post(f"/models/{self.generation_model}:generateContent", corpo)
+
+        # Cadeia de modelos. A sobrecarga do Gemini ("high demand", 503) e POR
+        # MODELO e cada 503 demora ~20 s para chegar; retentar o mesmo modelo quatro
+        # vezes custava 80 s para entregar um erro. Na sobrecarga, o modelo
+        # reserva responde em segundos. O modelo que de fato respondeu vai em
+        # `GenerationResult.model` e, dali, para `queries.model` — e o que permite
+        # comparar qualidade por modelo depois.
+        modelos = [self.generation_model]
+        reserva = self._settings.gemini_generation_fallback_model
+        if reserva and reserva != self.generation_model:
+            modelos.append(reserva)
+
+        dados: dict[str, Any] | None = None
+        modelo_usado = modelos[0]
+        for indice, modelo in enumerate(modelos):
+            e_ultimo = indice == len(modelos) - 1
+            try:
+                dados = await self._post(
+                    f"/models/{modelo}:generateContent",
+                    corpo,
+                    # Uma tentativa extra so quando nao ha para onde cair.
+                    tentativas=_MAX_TENTATIVAS if e_ultimo else _TENTATIVAS_ANTES_DA_RESERVA,
+                )
+                modelo_usado = modelo
+                break
+            except GeminiError as exc:
+                if e_ultimo or not exc.retryable:
+                    raise
+                logger.warning(
+                    "gemini_generation_fallback",
+                    from_model=modelo,
+                    to_model=modelos[indice + 1],
+                    reason=exc.code.value,
+                )
+        assert dados is not None  # o loop retorna dados ou levanta
 
         candidatos = dados.get("candidates") or []
         if not candidatos:
@@ -227,7 +270,7 @@ class GeminiClient:
         uso = dados.get("usageMetadata") or {}
         return GenerationResult(
             text=texto,
-            model=self.generation_model,
+            model=modelo_usado,
             prompt_tokens=_inteiro(uso.get("promptTokenCount")),
             completion_tokens=_inteiro(uso.get("candidatesTokenCount")),
             finish_reason=candidato.get("finishReason"),
@@ -235,10 +278,12 @@ class GeminiClient:
 
     # --- Transporte ---------------------------------------------------------
 
-    async def _post(self, caminho: str, corpo: dict[str, Any]) -> dict[str, Any]:
-        ultimo_erro: Exception | None = None
+    async def _post(
+        self, caminho: str, corpo: dict[str, Any], *, tentativas: int = _MAX_TENTATIVAS
+    ) -> dict[str, Any]:
+        ultimo_erro: GeminiError | None = None
 
-        for tentativa in range(1, _MAX_TENTATIVAS + 1):
+        for tentativa in range(1, tentativas + 1):
             try:
                 resposta = await self._http.post(caminho, json=corpo)
             except httpx.TimeoutException as exc:
@@ -272,12 +317,13 @@ class GeminiClient:
                     attempt=tentativa,
                 )
 
-            if tentativa < _MAX_TENTATIVAS:
+            if tentativa < tentativas:
                 # Backoff exponencial: 1s, 2s, 4s. Sem jitter de proposito — um so
                 # processo, sem rebanho para sincronizar.
                 await asyncio.sleep(_BACKOFF_BASE_S * (2 ** (tentativa - 1)))
 
         assert ultimo_erro is not None  # invariante do loop
+        ultimo_erro.retryable = True
         raise ultimo_erro
 
 

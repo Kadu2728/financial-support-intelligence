@@ -159,7 +159,10 @@ class Settings(BaseSettings):
     # por que. Em producao a chave e obrigatoria — validador abaixo.
     gemini_api_key: SecretStr = SecretStr("")
     gemini_embedding_model: str = "gemini-embedding-001"
-    gemini_generation_model: str = "gemini-3.6-flash"
+    gemini_generation_model: str = "gemini-3.8-flash"
+    # Usado quando o principal responde 503 "high demand" — sobrecarga e por modelo
+    # e intermitente (docs/rag-design.md §7). Vazio desativa o fallback.
+    gemini_generation_fallback_model: str = "gemini-3.5-flash-lite"
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     # 60 s: sob carga o Flash leva 20-30 s para gerar; 30 s cortava respostas boas.
     gemini_timeout_seconds: float = 60.0

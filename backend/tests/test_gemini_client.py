@@ -275,7 +275,7 @@ async def test_generate_json_envia_schema_sem_tools(settings: Settings) -> None:
     assert resultado.text == '{"answer": "ok"}'
     assert resultado.prompt_tokens == 120
     assert resultado.completion_tokens == 8
-    assert resultado.model == "gemini-3.6-flash"
+    assert resultado.model == "gemini-3.8-flash"
 
 
 async def test_generate_sem_candidato_expoe_motivo_do_bloqueio(settings: Settings) -> None:
@@ -296,3 +296,126 @@ async def test_generate_conteudo_vazio_e_erro(settings: Settings) -> None:
     cliente = build_client(settings, handler)
     with pytest.raises(GeminiBadResponseError, match="vazio"):
         await cliente.generate_json(system="s", user="u", response_schema={}, temperature=0.0)
+
+
+# --- Modelo reserva -----------------------------------------------------------------
+
+
+def _resposta_ok(texto: str = '{"answer": "ok"}') -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "candidates": [{"content": {"parts": [{"text": texto}]}, "finishReason": "STOP"}],
+            "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 3},
+        },
+    )
+
+
+def _sem_espera(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.integrations.gemini.client as modulo
+
+    async def dormir(segundos: float) -> None:
+        pass
+
+    monkeypatch.setattr(modulo.asyncio, "sleep", dormir)
+
+
+async def test_sobrecarga_do_principal_cai_para_o_reserva(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cada 503 de "high demand" leva ~20 s para chegar. Quatro tentativas no mesmo
+    modelo custavam 80 s para entregar um erro; o reserva responde em segundos."""
+    _sem_espera(monkeypatch)
+    chamadas: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        chamadas.append(request.url.path.rsplit("/", 1)[-1].split(":")[0])
+        if "3.8-flash" in request.url.path:
+            return httpx.Response(503, json={"error": {"message": "high demand"}})
+        return _resposta_ok()
+
+    cliente = build_client(settings, handler)
+    resultado = await cliente.generate_json(
+        system="s", user="u", response_schema={}, temperature=0.0
+    )
+
+    # Duas tentativas no principal, depois o reserva na primeira.
+    assert chamadas == ["gemini-3.8-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]
+    # O modelo que respondeu e o que vai para `queries.model`, nao o configurado.
+    assert resultado.model == "gemini-3.5-flash-lite"
+
+
+async def test_reserva_recebe_todas_as_tentativas_quando_tambem_falha(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _sem_espera(monkeypatch)
+    chamadas: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        chamadas.append(request.url.path.rsplit("/", 1)[-1].split(":")[0])
+        return httpx.Response(503, json={"error": {"message": "high demand"}})
+
+    cliente = build_client(settings, handler)
+    with pytest.raises(GeminiError) as erro:
+        await cliente.generate_json(system="s", user="u", response_schema={}, temperature=0.0)
+
+    assert chamadas.count("gemini-3.8-flash") == 2
+    assert chamadas.count("gemini-3.5-flash-lite") == 4
+    assert erro.value.retryable is True
+
+
+async def test_erro_definitivo_nao_cai_para_o_reserva(settings: Settings) -> None:
+    """400 (schema rejeitado) ou 403 (chave) falhariam igual em qualquer modelo."""
+    chamadas: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        chamadas.append(request.url.path)
+        return httpx.Response(400, json={"error": {"message": "bad schema"}})
+
+    cliente = build_client(settings, handler)
+    with pytest.raises(GeminiBadResponseError) as erro:
+        await cliente.generate_json(system="s", user="u", response_schema={}, temperature=0.0)
+
+    assert len(chamadas) == 1
+    assert "3.8-flash" in chamadas[0]
+    assert erro.value.retryable is False
+
+
+async def test_sem_reserva_configurado_o_principal_recebe_todas_as_tentativas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _sem_espera(monkeypatch)
+    settings = Settings(
+        gemini_api_key="chave-de-teste",
+        gemini_generation_fallback_model="",
+        jwt_secret_key="segredo-de-teste-com-tamanho-suficiente",
+    )
+    tentativas = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal tentativas
+        tentativas += 1
+        return httpx.Response(503, json={"error": {"message": "high demand"}})
+
+    cliente = build_client(settings, handler)
+    with pytest.raises(GeminiError):
+        await cliente.generate_json(system="s", user="u", response_schema={}, temperature=0.0)
+    assert tentativas == 4
+
+
+async def test_embeddings_nao_usam_reserva(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Embeddings de outro modelo viveriam em outro espaco vetorial: nunca cair."""
+    _sem_espera(monkeypatch)
+    caminhos: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        caminhos.append(request.url.path)
+        return httpx.Response(503, json={"error": {"message": "high demand"}})
+
+    cliente = build_client(settings, handler)
+    with pytest.raises(GeminiError):
+        await cliente.embed(["a"], task_type=TaskType.RETRIEVAL_DOCUMENT)
+    assert len(caminhos) == 4
+    assert all("gemini-embedding-001" in c for c in caminhos)

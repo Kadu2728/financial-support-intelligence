@@ -339,6 +339,6 @@ consequências (inclusive as negativas) e alternativas descartadas:
 - [x] **Fase 8** — Citações, histórico e feedback
 - [x] **Fase 9** — Dashboard e Support Intelligence
 - [x] **Fase 10** — Rate limiting, hardening e observabilidade
-- [ ] **Fase 11** — Deploy (arquivos prontos; exige contas Vercel/Railway/R2)
+- [x] **Fase 11** — Deploy: Vercel (frontend) + Render (backend) + Neon; arquivos no Postgres (`STORAGE_BACKEND=db`)
 - [x] **Calibração** — `scripts/avaliar_busca.py` rodado com a chave real; números, diagnóstico e
   os dois bugs de contrato que só o modelo real revelou estão em `docs/rag-design.md` §10
